@@ -1,0 +1,3068 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>ONE AGAINST ALL</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
+
+  :root {
+    --neon-red: #ff2244;
+    --neon-cyan: #00ffdd;
+    --neon-orange: #ff8800;
+    --neon-purple: #cc44ff;
+    --neon-blue: #2266ff;
+    --bg: #04060a;
+    --grid: rgba(0,255,221,0.04);
+    --ui-bg: rgba(4,6,10,0.85);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: var(--bg);
+    font-family: 'Share Tech Mono', monospace;
+    color: var(--neon-cyan);
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #game-wrapper {
+    position: relative;
+    width: 900px;
+    height: 600px;
+  }
+
+  canvas {
+    display: block;
+    background: var(--bg);
+    border: 1px solid rgba(0,255,221,0.2);
+    box-shadow: 0 0 40px rgba(0,255,221,0.08), inset 0 0 80px rgba(0,0,0,0.5);
+    cursor: crosshair;
+  }
+
+  /* HUD */
+  #hud {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 12px 16px;
+    pointer-events: none;
+  }
+
+  .hud-panel {
+    background: var(--ui-bg);
+    border: 1px solid rgba(0,255,221,0.15);
+    padding: 8px 14px;
+    font-family: 'Orbitron', sans-serif;
+  }
+
+  .hud-label {
+    font-size: 9px;
+    letter-spacing: 3px;
+    color: rgba(0,255,221,0.5);
+    margin-bottom: 3px;
+  }
+
+  .hud-value {
+    font-size: 22px;
+    font-weight: 900;
+    color: var(--neon-cyan);
+    text-shadow: 0 0 15px var(--neon-cyan);
+  }
+
+  #health-bar-wrapper {
+    position: absolute;
+    bottom: 12px;
+    left: 16px;
+    right: 16px;
+    pointer-events: none;
+  }
+
+  .bar-label {
+    font-size: 9px;
+    letter-spacing: 3px;
+    color: rgba(255,34,68,0.7);
+    margin-bottom: 4px;
+  }
+
+  #health-bar-bg {
+    height: 8px;
+    background: rgba(255,34,68,0.1);
+    border: 1px solid rgba(255,34,68,0.3);
+    position: relative;
+    overflow: hidden;
+  }
+
+  #health-bar-fill {
+    height: 100%;
+    background: var(--neon-red);
+    box-shadow: 0 0 10px var(--neon-red);
+    transition: width 0.15s;
+  }
+
+  /* Overlay screens */
+  .overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(4,6,10,0.92);
+    z-index: 10;
+  }
+
+  .overlay.hidden { display: none; }
+
+  .overlay-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 38px;
+    font-weight: 900;
+    letter-spacing: 8px;
+    color: var(--neon-cyan);
+    text-shadow: 0 0 30px var(--neon-cyan), 0 0 60px rgba(0,255,221,0.3);
+    margin-bottom: 8px;
+  }
+
+  .overlay-sub {
+    font-size: 13px;
+    letter-spacing: 4px;
+    color: rgba(0,255,221,0.5);
+    margin-bottom: 40px;
+  }
+
+  .btn {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 4px;
+    padding: 14px 36px;
+    background: transparent;
+    border: 1px solid var(--neon-cyan);
+    color: var(--neon-cyan);
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: all 0.2s;
+    margin-top: 10px;
+  }
+
+  .btn:hover {
+    background: rgba(0,255,221,0.1);
+    box-shadow: 0 0 20px rgba(0,255,221,0.3);
+  }
+
+  .controls-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 24px;
+    margin-bottom: 32px;
+    font-size: 11px;
+    color: rgba(0,255,221,0.6);
+  }
+
+  .controls-grid span { color: var(--neon-cyan); }
+
+  /* Wave announcement */
+  #wave-announce {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 36px;
+    font-weight: 900;
+    letter-spacing: 6px;
+    color: var(--neon-orange);
+    text-shadow: 0 0 30px var(--neon-orange);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+    text-align: center;
+    z-index: 5;
+  }
+
+  #wave-announce.show { opacity: 1; }
+
+  /* Buff selection */
+  #buff-screen {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(4,6,10,0.95);
+    z-index: 10;
+  }
+
+  #buff-screen.hidden { display: none; }
+
+  #buff-screen h2 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 20px;
+    font-weight: 900;
+    letter-spacing: 6px;
+    color: var(--neon-orange);
+    text-shadow: 0 0 20px var(--neon-orange);
+    margin-bottom: 8px;
+  }
+
+  #buff-screen p {
+    font-size: 11px;
+    letter-spacing: 3px;
+    color: rgba(255,136,0,0.5);
+    margin-bottom: 28px;
+  }
+
+  .buff-cards {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 24px;
+  }
+
+  .buff-card {
+    width: 175px;
+    padding: 22px 18px;
+    border: 1px solid rgba(255,136,0,0.3);
+    background: rgba(255,136,0,0.04);
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: center;
+  }
+
+  .buff-card:hover {
+    border-color: var(--neon-orange);
+    background: rgba(255,136,0,0.1);
+    box-shadow: 0 0 24px rgba(255,136,0,0.2);
+    transform: translateY(-4px);
+  }
+
+  .buff-card.rare {
+    border-color: rgba(204,68,255,0.4);
+    background: rgba(204,68,255,0.04);
+  }
+  .buff-card.rare:hover {
+    border-color: var(--neon-purple);
+    background: rgba(204,68,255,0.1);
+    box-shadow: 0 0 24px rgba(204,68,255,0.25);
+  }
+  .buff-card.rare .buff-name { color: var(--neon-purple); }
+
+  .buff-icon {
+    font-size: 30px;
+    margin-bottom: 10px;
+    display: block;
+  }
+
+  .buff-name {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    color: var(--neon-orange);
+    margin-bottom: 8px;
+  }
+
+  .buff-desc {
+    font-size: 10px;
+    color: rgba(255,136,0,0.6);
+    line-height: 1.6;
+  }
+
+  .buff-card.rare .buff-desc { color: rgba(204,68,255,0.6); }
+
+  #reroll-btn {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    padding: 10px 28px;
+    background: transparent;
+    border: 1px solid rgba(0,255,221,0.3);
+    color: rgba(0,255,221,0.6);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  #reroll-btn:hover:not(:disabled) {
+    border-color: var(--neon-cyan);
+    color: var(--neon-cyan);
+    box-shadow: 0 0 16px rgba(0,255,221,0.2);
+  }
+  #reroll-btn:disabled {
+    opacity: 0.25;
+    cursor: not-allowed;
+  }
+
+  #reroll-count {
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: rgba(0,255,221,0.4);
+    margin-top: 8px;
+  }
+
+  /* Pause menu */
+  #pause-screen {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    display: flex;
+    gap: 0;
+    background: rgba(4,6,10,0.93);
+    z-index: 20;
+  }
+  #pause-screen.hidden { display: none; }
+
+  /* Left panel — actions */
+  #pause-left {
+    width: 240px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border-right: 1px solid rgba(0,255,221,0.08);
+    padding: 32px 28px;
+    gap: 0;
+  }
+
+  #pause-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 26px;
+    font-weight: 900;
+    letter-spacing: 8px;
+    color: var(--neon-cyan);
+    text-shadow: 0 0 24px var(--neon-cyan);
+    margin-bottom: 6px;
+  }
+
+  #pause-hint {
+    font-size: 9px;
+    letter-spacing: 3px;
+    color: rgba(0,255,221,0.3);
+    margin-bottom: 40px;
+  }
+
+  .pause-btn {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    padding: 12px 0;
+    width: 180px;
+    background: transparent;
+    border: 1px solid rgba(0,255,221,0.2);
+    color: rgba(0,255,221,0.7);
+    cursor: pointer;
+    transition: all 0.18s;
+    margin-bottom: 10px;
+    text-align: center;
+  }
+  .pause-btn:hover {
+    border-color: var(--neon-cyan);
+    color: var(--neon-cyan);
+    box-shadow: 0 0 16px rgba(0,255,221,0.15);
+  }
+  .pause-btn.danger {
+    border-color: rgba(255,34,68,0.2);
+    color: rgba(255,34,68,0.6);
+  }
+  .pause-btn.danger:hover {
+    border-color: var(--neon-red);
+    color: var(--neon-red);
+    box-shadow: 0 0 16px rgba(255,34,68,0.15);
+  }
+
+  /* Right panel — info sheet */
+  #pause-right {
+    flex: 1;
+    display: flex;
+    gap: 24px;
+    padding: 32px 32px;
+    overflow-y: auto;
+  }
+
+  /* Stats column */
+  #pause-stats {
+    width: 200px;
+    flex-shrink: 0;
+  }
+
+  .info-section-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 4px;
+    color: rgba(0,255,221,0.4);
+    border-bottom: 1px solid rgba(0,255,221,0.1);
+    padding-bottom: 6px;
+    margin-bottom: 14px;
+  }
+
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 9px;
+    font-size: 10px;
+  }
+  .stat-row-label {
+    color: rgba(0,255,221,0.45);
+    letter-spacing: 1px;
+  }
+  .stat-row-value {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--neon-cyan);
+  }
+  .stat-row-value.warn { color: var(--neon-orange); }
+  .stat-row-value.danger { color: var(--neon-red); }
+  .stat-row-value.rare { color: var(--neon-purple); }
+
+  /* Buffs column */
+  #pause-buffs {
+    flex: 1;
+  }
+
+  .active-buff-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 10px;
+    padding: 8px 10px;
+    border: 1px solid rgba(255,136,0,0.12);
+    background: rgba(255,136,0,0.03);
+  }
+  .active-buff-row.rare-buff {
+    border-color: rgba(204,68,255,0.2);
+    background: rgba(204,68,255,0.03);
+  }
+  .active-buff-icon { font-size: 18px; flex-shrink:0; line-height:1; }
+  .active-buff-info { flex:1; }
+  .active-buff-name {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: var(--neon-orange);
+    margin-bottom: 2px;
+  }
+  .active-buff-row.rare-buff .active-buff-name { color: var(--neon-purple); }
+  .active-buff-desc {
+    font-size: 9px;
+    color: rgba(255,136,0,0.5);
+    line-height: 1.5;
+  }
+  .active-buff-row.rare-buff .active-buff-desc { color: rgba(204,68,255,0.5); }
+  .active-buff-count {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 13px;
+    font-weight: 900;
+    color: var(--neon-cyan);
+    flex-shrink: 0;
+    align-self: center;
+  }
+
+  /* Countdown overlay */
+  #countdown-screen {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(4,6,10,0.7);
+    z-index: 25;
+    pointer-events: none;
+  }
+  #countdown-screen.hidden { display: none; }
+  #countdown-number {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 96px;
+    font-weight: 900;
+    color: var(--neon-cyan);
+    text-shadow: 0 0 40px var(--neon-cyan), 0 0 80px rgba(0,255,221,0.4);
+    animation: cdpulse 1s ease-out;
+  }
+  #countdown-label {
+    font-size: 11px;
+    letter-spacing: 5px;
+    color: rgba(0,255,221,0.4);
+    margin-top: 8px;
+  }
+  @keyframes cdpulse {
+    from { transform: scale(1.6); opacity: 0.3; }
+    to   { transform: scale(1);   opacity: 1; }
+  }
+
+  /* Boss HP bar */
+  #boss-bar-wrapper {
+    position: absolute;
+    top: 56px; left: 80px; right: 80px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.5s;
+  }
+  #boss-bar-wrapper.visible { opacity: 1; }
+  #boss-bar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 5px;
+  }
+  #boss-bar-name {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 13px;
+    font-weight: 900;
+    letter-spacing: 4px;
+    color: #fff;
+    text-shadow: 0 0 16px currentColor;
+  }
+  #boss-bar-hp-text {
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: rgba(255,255,255,0.5);
+  }
+  #boss-bar-bg {
+    height: 10px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.15);
+    overflow: hidden;
+    position: relative;
+  }
+  #boss-bar-fill {
+    height: 100%;
+    width: 100%;
+    transition: width 0.1s;
+  }
+  /* Boss intro overlay */
+  #boss-intro {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(4,6,10,0);
+    pointer-events: none;
+    z-index: 6;
+    opacity: 0;
+    transition: opacity 0.4s;
+  }
+  #boss-intro.show { opacity: 1; }
+  #boss-intro-label {
+    font-size: 10px;
+    letter-spacing: 8px;
+    color: rgba(255,255,255,0.4);
+    margin-bottom: 10px;
+  }
+  #boss-intro-name {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 44px;
+    font-weight: 900;
+    letter-spacing: 6px;
+    text-shadow: 0 0 40px currentColor;
+  }
+  /* Boss drop screen — reuse buff screen style but distinct */
+  #boss-drop-screen {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(4,6,10,0.96);
+    z-index: 10;
+  }
+  #boss-drop-screen.hidden { display: none; }
+  #boss-drop-screen h2 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 18px;
+    font-weight: 900;
+    letter-spacing: 6px;
+    margin-bottom: 6px;
+  }
+  #boss-drop-screen p {
+    font-size: 10px;
+    letter-spacing: 3px;
+    margin-bottom: 36px;
+    opacity: 0.5;
+  }
+  .boss-drop-card {
+    width: 300px;
+    padding: 28px 28px;
+    border: 2px solid currentColor;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+  }
+  .boss-drop-card:hover { transform: scale(1.03); filter: brightness(1.15); }
+  .boss-drop-card .buff-icon { font-size: 42px; margin-bottom: 14px; display: block; }
+  .boss-drop-card .buff-name {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 14px;
+    font-weight: 900;
+    letter-spacing: 4px;
+    margin-bottom: 10px;
+  }
+  .boss-drop-card .buff-desc { font-size: 11px; line-height: 1.7; opacity: 0.7; }
+  /* ── SCOREBOARD PANEL ─────────────────────────── */
+  #sb-toggle {
+    position: fixed;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(4,6,10,0.9);
+    border: 1px solid rgba(0,255,221,0.2);
+    border-right: none;
+    color: var(--neon-cyan);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    padding: 14px 8px;
+    cursor: pointer;
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    z-index: 100;
+    transition: background 0.2s, box-shadow 0.2s;
+  }
+  #sb-toggle:hover {
+    background: rgba(0,255,221,0.08);
+    box-shadow: -4px 0 16px rgba(0,255,221,0.1);
+  }
+
+  #sb-panel {
+    position: fixed;
+    right: -320px;
+    top: 0; bottom: 0;
+    width: 320px;
+    background: rgba(4,6,10,0.97);
+    border-left: 1px solid rgba(0,255,221,0.12);
+    z-index: 99;
+    display: flex;
+    flex-direction: column;
+    transition: right 0.35s cubic-bezier(0.4,0,0.2,1);
+    overflow: hidden;
+  }
+  #sb-panel.open { right: 0; }
+
+  #sb-header {
+    padding: 20px 20px 14px;
+    border-bottom: 1px solid rgba(0,255,221,0.08);
+    flex-shrink: 0;
+  }
+  #sb-header h3 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 13px;
+    font-weight: 900;
+    letter-spacing: 5px;
+    color: var(--neon-cyan);
+    text-shadow: 0 0 12px var(--neon-cyan);
+    margin-bottom: 3px;
+  }
+  #sb-header p {
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: rgba(0,255,221,0.3);
+  }
+
+  #sb-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 0;
+  }
+  #sb-list::-webkit-scrollbar { width: 3px; }
+  #sb-list::-webkit-scrollbar-thumb { background: rgba(0,255,221,0.2); }
+
+  .sb-entry {
+    display: flex;
+    align-items: center;
+    padding: 10px 16px;
+    border-bottom: 1px solid rgba(0,255,221,0.04);
+    gap: 10px;
+    transition: background 0.15s;
+  }
+  .sb-entry:hover { background: rgba(0,255,221,0.03); }
+
+  .sb-rank {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 13px;
+    font-weight: 900;
+    width: 24px;
+    flex-shrink: 0;
+    text-align: center;
+  }
+  .sb-rank.gold   { color: #ffd700; text-shadow: 0 0 10px #ffd700; }
+  .sb-rank.silver { color: #c0c0c0; text-shadow: 0 0 10px #c0c0c0; }
+  .sb-rank.bronze { color: #cd7f32; text-shadow: 0 0 10px #cd7f32; }
+  .sb-rank.other  { color: rgba(0,255,221,0.3); }
+
+  .sb-info { flex: 1; min-width: 0; }
+  .sb-name {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: var(--neon-cyan);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 2px;
+  }
+  .sb-meta {
+    font-size: 9px;
+    color: rgba(0,255,221,0.35);
+    letter-spacing: 1px;
+  }
+
+  .sb-score-col { text-align: right; flex-shrink: 0; }
+  .sb-score-val {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 12px;
+    font-weight: 900;
+    color: var(--neon-orange);
+  }
+  .sb-score-wave {
+    font-size: 9px;
+    color: rgba(255,136,0,0.4);
+    letter-spacing: 1px;
+  }
+
+  .sb-detail-btn {
+    width: 26px; height: 26px;
+    background: transparent;
+    border: 1px solid rgba(0,255,221,0.15);
+    color: rgba(0,255,221,0.5);
+    cursor: pointer;
+    font-size: 12px;
+    flex-shrink: 0;
+    transition: all 0.15s;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .sb-detail-btn:hover {
+    border-color: var(--neon-cyan);
+    color: var(--neon-cyan);
+    box-shadow: 0 0 8px rgba(0,255,221,0.2);
+  }
+
+  #sb-empty {
+    text-align: center;
+    padding: 40px 20px;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: rgba(0,255,221,0.2);
+    line-height: 2;
+  }
+
+  #sb-footer {
+    padding: 12px 16px;
+    border-top: 1px solid rgba(0,255,221,0.06);
+    flex-shrink: 0;
+  }
+  #sb-clear-btn {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 9px;
+    letter-spacing: 2px;
+    background: transparent;
+    border: 1px solid rgba(255,34,68,0.2);
+    color: rgba(255,34,68,0.4);
+    padding: 7px 14px;
+    cursor: pointer;
+    width: 100%;
+    transition: all 0.2s;
+  }
+  #sb-clear-btn:hover {
+    border-color: var(--neon-red);
+    color: var(--neon-red);
+  }
+
+  /* ── NAME INPUT OVERLAY ────────────────────────── */
+  #name-input-screen {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(4,6,10,0.96);
+    z-index: 30;
+  }
+  #name-input-screen.hidden { display: none; }
+  #name-input-screen h2 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 16px;
+    font-weight: 900;
+    letter-spacing: 5px;
+    color: var(--neon-cyan);
+    margin-bottom: 6px;
+  }
+  #name-input-screen p {
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: rgba(0,255,221,0.4);
+    margin-bottom: 28px;
+  }
+  #player-name-input {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 4px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid var(--neon-cyan);
+    color: var(--neon-cyan);
+    text-align: center;
+    width: 280px;
+    padding: 8px 4px;
+    outline: none;
+    margin-bottom: 24px;
+    text-transform: uppercase;
+  }
+  #player-name-input::placeholder { color: rgba(0,255,221,0.2); }
+  #name-submit-btn {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 4px;
+    padding: 12px 32px;
+    background: transparent;
+    border: 1px solid var(--neon-cyan);
+    color: var(--neon-cyan);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  #name-submit-btn:hover {
+    background: rgba(0,255,221,0.1);
+    box-shadow: 0 0 20px rgba(0,255,221,0.2);
+  }
+  .name-score-preview {
+    margin-top: 20px;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: rgba(0,255,221,0.3);
+    text-align: center;
+  }
+  .name-score-preview span { color: var(--neon-orange); }
+
+  /* ── RUN DETAIL MODAL ──────────────────────────── */
+  #run-detail-modal {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 420px;
+    background: rgba(4,6,10,0.98);
+    border: 1px solid rgba(0,255,221,0.2);
+    box-shadow: 0 0 60px rgba(0,0,0,0.8);
+    z-index: 200;
+    max-height: 80vh;
+    overflow-y: auto;
+  }
+  #run-detail-modal.hidden { display: none; }
+  #run-detail-modal::-webkit-scrollbar { width: 3px; }
+  #run-detail-modal::-webkit-scrollbar-thumb { background: rgba(0,255,221,0.2); }
+
+  #rdm-header {
+    padding: 18px 20px 14px;
+    border-bottom: 1px solid rgba(0,255,221,0.08);
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+  }
+  #rdm-name {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 14px;
+    font-weight: 900;
+    letter-spacing: 3px;
+    color: var(--neon-cyan);
+  }
+  #rdm-date { font-size: 9px; color: rgba(0,255,221,0.3); margin-top: 3px; letter-spacing: 1px; }
+  #rdm-close {
+    background: transparent;
+    border: 1px solid rgba(0,255,221,0.15);
+    color: rgba(0,255,221,0.5);
+    width: 28px; height: 28px;
+    cursor: pointer; font-size: 14px;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+  #rdm-close:hover { border-color: var(--neon-cyan); color: var(--neon-cyan); }
+
+  #rdm-body { padding: 16px 20px; }
+  .rdm-score-row {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 18px;
+  }
+  .rdm-score-box {
+    flex: 1;
+    text-align: center;
+    padding: 10px 8px;
+    border: 1px solid rgba(0,255,221,0.08);
+    background: rgba(0,255,221,0.02);
+  }
+  .rdm-score-box-val {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 18px;
+    font-weight: 900;
+    color: var(--neon-orange);
+  }
+  .rdm-score-box-label {
+    font-size: 8px;
+    letter-spacing: 2px;
+    color: rgba(0,255,221,0.35);
+    margin-top: 3px;
+  }
+  .rdm-section { margin-bottom: 16px; }
+  .rdm-section-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 8px;
+    letter-spacing: 4px;
+    color: rgba(0,255,221,0.3);
+    border-bottom: 1px solid rgba(0,255,221,0.06);
+    padding-bottom: 5px;
+    margin-bottom: 10px;
+  }
+  .rdm-stat-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    margin-bottom: 5px;
+    color: rgba(0,255,221,0.5);
+  }
+  .rdm-stat-row span:last-child {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--neon-cyan);
+  }
+  .rdm-buff-list { display: flex; flex-wrap: wrap; gap: 6px; }
+  .rdm-buff-tag {
+    font-size: 9px;
+    letter-spacing: 1px;
+    padding: 4px 8px;
+    border: 1px solid rgba(255,136,0,0.25);
+    color: rgba(255,136,0,0.7);
+    background: rgba(255,136,0,0.04);
+  }
+  .rdm-buff-tag.rare-tag {
+    border-color: rgba(204,68,255,0.3);
+    color: rgba(204,68,255,0.8);
+    background: rgba(204,68,255,0.04);
+  }
+  .rdm-buff-tag.boss-tag {
+    border-color: rgba(0,255,221,0.25);
+    color: rgba(0,255,221,0.7);
+    background: rgba(0,255,221,0.04);
+  }
+  #death-score {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 48px;
+    font-weight: 900;
+    color: var(--neon-red);
+    text-shadow: 0 0 30px var(--neon-red);
+    margin-bottom: 4px;
+  }
+
+  .stat-line {
+    font-size: 11px;
+    letter-spacing: 3px;
+    color: rgba(0,255,221,0.5);
+    margin-bottom: 6px;
+  }
+  .stat-line span { color: var(--neon-cyan); }
+
+  /* ── BOSS FIGHT MODE ───────────────────────────── */
+  #bossfight-btn {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 10px; font-weight: 700; letter-spacing: 3px;
+    padding: 10px 28px; background: transparent;
+    border: 1px solid rgba(204,68,255,0.3); color: rgba(204,68,255,0.6);
+    cursor: pointer; transition: all 0.2s; margin-top: 8px;
+  }
+  #bossfight-btn:hover { border-color: var(--neon-purple); color: var(--neon-purple); box-shadow: 0 0 14px rgba(204,68,255,0.15); }
+
+  #bossfight-screen {
+    position: absolute; top:0; left:0; right:0; bottom:0;
+    background: rgba(4,6,10,0.97); z-index: 15;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+  }
+  #bossfight-screen.hidden { display: none; }
+  #bossfight-screen h2 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 22px; font-weight: 900; letter-spacing: 7px;
+    color: var(--neon-purple); text-shadow: 0 0 24px var(--neon-purple);
+    margin-bottom: 4px;
+  }
+  #bossfight-screen > p { font-size: 9px; letter-spacing: 3px; color: rgba(204,68,255,0.4); margin-bottom: 24px; }
+
+  #bossfight-layout { display: flex; gap: 20px; align-items: flex-start; width: 860px; }
+
+  #bossfight-boss-col { width: 190px; flex-shrink: 0; }
+  .bf-col-title {
+    font-family: 'Orbitron', sans-serif; font-size: 8px; letter-spacing: 4px;
+    color: rgba(204,68,255,0.4); border-bottom: 1px solid rgba(204,68,255,0.1);
+    padding-bottom: 6px; margin-bottom: 10px;
+  }
+  .bf-boss-card {
+    padding: 12px; margin-bottom: 7px;
+    border: 1px solid rgba(255,255,255,0.07); cursor: pointer; transition: all 0.18s;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .bf-boss-card:hover { border-color: rgba(255,255,255,0.22); background: rgba(255,255,255,0.025); }
+  .bf-boss-card.selected { border-color: currentColor; background: rgba(255,255,255,0.04); }
+  .bf-boss-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+  .bf-boss-info { flex: 1; }
+  .bf-boss-name { font-family: 'Orbitron', sans-serif; font-size: 8px; font-weight: 700; letter-spacing: 2px; margin-bottom: 2px; }
+  .bf-boss-desc { font-size: 7px; color: rgba(255,255,255,0.28); line-height: 1.5; }
+  .bf-boss-check { font-size: 14px; flex-shrink: 0; opacity: 0; transition: opacity 0.15s; }
+  .bf-boss-card.selected .bf-boss-check { opacity: 1; }
+
+  #bossfight-buff-col { flex: 1; }
+  #bossfight-buff-counter { font-family: 'Orbitron', sans-serif; font-size: 10px; font-weight: 900; letter-spacing: 2px; margin-bottom: 10px; }
+  #bossfight-buff-counter .used { color: var(--neon-orange); }
+  #bossfight-buff-counter .total { color: rgba(0,255,221,0.4); }
+
+  #bossfight-buff-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 5px; }
+  .pbt {
+    padding: 7px 5px; text-align: center;
+    border: 1px solid rgba(255,136,0,0.1); background: rgba(255,136,0,0.015);
+    cursor: pointer; transition: all 0.13s; position: relative;
+  }
+  .pbt:hover { border-color: rgba(255,136,0,0.3); background: rgba(255,136,0,0.05); }
+  .pbt.pbt-on { border-color: var(--neon-orange); background: rgba(255,136,0,0.09); box-shadow: 0 0 8px rgba(255,136,0,0.12); }
+  .pbt.pbt-rare { border-color: rgba(204,68,255,0.12); background: rgba(204,68,255,0.015); }
+  .pbt.pbt-rare:hover { border-color: rgba(204,68,255,0.3); background: rgba(204,68,255,0.05); }
+  .pbt.pbt-rare.pbt-on { border-color: var(--neon-purple); background: rgba(204,68,255,0.09); box-shadow: 0 0 8px rgba(204,68,255,0.12); }
+  .pbt.pbt-disabled { opacity: 0.28; cursor: not-allowed; }
+  .pbt-icon { font-size: 17px; display: block; margin-bottom: 3px; }
+  .pbt-name { font-family: 'Orbitron', sans-serif; font-size: 5.5px; font-weight: 700; letter-spacing: 0.5px; color: rgba(255,136,0,0.65); line-height: 1.3; }
+  .pbt.pbt-rare .pbt-name { color: rgba(204,68,255,0.8); }
+  .pbt.pbt-on .pbt-name { color: var(--neon-orange); }
+  .pbt.pbt-rare.pbt-on .pbt-name { color: var(--neon-purple); }
+  .pbt-badge {
+    position: absolute; top: 2px; right: 2px;
+    font-family: 'Orbitron', sans-serif; font-size: 7px; font-weight: 900;
+    color: var(--neon-cyan); background: rgba(0,0,0,0.55); padding: 0 2px;
+  }
+
+  #bossfight-footer { display: flex; gap: 12px; margin-top: 18px; }
+  .bf-btn {
+    font-family: 'Orbitron', sans-serif; font-size: 11px; font-weight: 700;
+    letter-spacing: 4px; padding: 12px 32px; background: transparent; cursor: pointer; transition: all 0.2s;
+  }
+  #bf-start { border: 1px solid var(--neon-purple); color: var(--neon-purple); }
+  #bf-start:hover:not(:disabled) { background: rgba(204,68,255,0.1); box-shadow: 0 0 18px rgba(204,68,255,0.2); }
+  #bf-start:disabled { opacity: 0.3; cursor: not-allowed; }
+  #bf-cancel { border: 1px solid rgba(0,255,221,0.18); color: rgba(0,255,221,0.4); }
+  #bf-cancel:hover { border-color: var(--neon-cyan); color: var(--neon-cyan); }
+
+  #bossfight-badge {
+    position: absolute; top: 6px; left: 50%; transform: translateX(-50%);
+    font-family: 'Orbitron', sans-serif; font-size: 7px; font-weight: 700; letter-spacing: 4px;
+    color: var(--neon-purple); background: rgba(204,68,255,0.07);
+    border: 1px solid rgba(204,68,255,0.2); padding: 3px 12px;
+    pointer-events: none; z-index: 4;
+  }
+  #bossfight-badge.hidden { display: none; }
+</style>
+</head>
+<body>
+<div id="game-wrapper">
+  <canvas id="canvas" width="900" height="600"></canvas>
+
+  <!-- HUD -->
+  <div id="hud">
+    <div class="hud-panel">
+      <div class="hud-label">VAGUE</div>
+      <div class="hud-value" id="hud-wave">01</div>
+    </div>
+    <div class="hud-panel" style="text-align:center">
+      <div class="hud-label">SCORE</div>
+      <div class="hud-value" id="hud-score">0</div>
+    </div>
+    <div class="hud-panel" style="text-align:right">
+      <div class="hud-label">ENNEMIS</div>
+      <div class="hud-value" id="hud-enemies">0</div>
+    </div>
+  </div>
+
+  <div id="health-bar-wrapper">
+    <div class="bar-label">VIE ─── POINTS DE RÉSISTANCE</div>
+    <div id="health-bar-bg">
+      <div id="health-bar-fill" style="width:100%"></div>
+    </div>
+  </div>
+
+  <!-- Boss HP bar -->
+  <div id="boss-bar-wrapper">
+    <div id="boss-bar-header">
+      <span id="boss-bar-name">BOSS</span>
+      <span id="boss-bar-hp-text">—</span>
+    </div>
+    <div id="boss-bar-bg">
+      <div id="boss-bar-fill"></div>
+    </div>
+  </div>
+
+  <!-- Boss intro -->
+  <div id="boss-intro">
+    <div id="boss-intro-label">⚠ BOSS ⚠</div>
+    <div id="boss-intro-name">???</div>
+  </div>
+
+  <!-- Boss drop screen -->
+  <div id="boss-drop-screen" class="hidden">
+    <h2 id="boss-drop-title" style="color:#fff">BUTIN DU BOSS</h2>
+    <p>UN POUVOIR UNIQUE VOUS EST OFFERT</p>
+    <div id="boss-drop-card-wrapper"></div>
+  </div>
+
+  <!-- Wave announce -->
+  <div id="wave-announce"></div>
+
+  <!-- Start screen -->
+  <div class="overlay" id="start-screen">
+    <div class="overlay-title">ONE AGAINST ALL</div>
+    <div class="overlay-sub">ARENA · WAVE MODE</div>
+    <div class="controls-grid">
+      <div><span>ZQSD</span> — Déplacement</div>
+      <div><span>SOURIS</span> — Visée</div>
+      <div><span>CLIC</span> — Tir</div>
+      <div><span>SURVIVE</span> — Objectif</div>
+    </div>
+    <button class="btn" onclick="startGame()">COMMENCER</button>
+    <button id="bossfight-btn" onclick="openBossFight()">💀 BOSS FIGHT</button>
+  </div>
+
+  <!-- Game over -->
+  <div class="overlay hidden" id="gameover-screen">
+    <div class="overlay-sub">GAME OVER</div>
+    <div id="death-score">0</div>
+    <div class="stat-line">VAGUE ATTEINTE : <span id="go-wave">1</span></div>
+    <div class="stat-line">ENNEMIS ÉLIMINÉS : <span id="go-kills">0</span></div>
+    <button class="btn" onclick="replayOrRestart()" style="margin-top:24px">REJOUER</button>
+    <button class="btn" id="go-bossfight-btn" onclick="openBossFight()" style="display:none;margin-top:8px;border-color:rgba(204,68,255,0.5);color:rgba(204,68,255,0.8)">↺ RETENTER LE BOSS</button>
+    <button class="btn" onclick="goToMenu()" style="margin-top:8px;border-color:rgba(0,255,221,0.3);color:rgba(0,255,221,0.5)">⌂ MENU PRINCIPAL</button>
+  </div>
+
+  <!-- Buff screen -->
+  <div id="buff-screen" class="hidden">
+    <h2>AMÉLIORATION</h2>
+    <p>CHOISISSEZ UN BUFF AVANT LA PROCHAINE VAGUE</p>
+    <div class="buff-cards" id="buff-cards"></div>
+    <button id="reroll-btn" onclick="rerollBuffs()">🎲 REROLL</button>
+    <div id="reroll-count">3 rerolls disponibles</div>
+  </div>
+  <!-- Pause screen -->
+  <div id="pause-screen" class="hidden">
+    <div id="pause-left">
+      <div id="pause-title">PAUSE</div>
+      <div id="pause-hint">ESC POUR REPRENDRE</div>
+      <button class="pause-btn" onclick="resumeGame()">▶ REPRENDRE</button>
+      <button class="pause-btn danger" onclick="startGame()">↺ RECOMMENCER</button>
+      <button class="pause-btn" onclick="goToMenu()" style="margin-top:6px;border-color:rgba(0,255,221,0.2);color:rgba(0,255,221,0.5)">⌂ MENU PRINCIPAL</button>
+    </div>
+    <div id="pause-right">
+      <div id="pause-stats">
+        <div class="info-section-title">STATISTIQUES</div>
+        <div class="stat-row"><span class="stat-row-label">VIE</span><span class="stat-row-value" id="ps-hp">—</span></div>
+        <div class="stat-row"><span class="stat-row-label">VIE MAX</span><span class="stat-row-value" id="ps-maxhp">—</span></div>
+        <div class="stat-row"><span class="stat-row-label">DÉGÂTS</span><span class="stat-row-value" id="ps-dmg">—</span></div>
+        <div class="stat-row"><span class="stat-row-label">VITESSE</span><span class="stat-row-value" id="ps-spd">—</span></div>
+        <div class="stat-row"><span class="stat-row-label">CADENCE</span><span class="stat-row-value" id="ps-fr">—</span></div>
+        <div class="stat-row"><span class="stat-row-label">HITBOX</span><span class="stat-row-value" id="ps-r">—</span></div>
+        <div class="stat-row"><span class="stat-row-label">ORBES</span><span class="stat-row-value" id="ps-orbs">—</span></div>
+        <div class="stat-row"><span class="stat-row-label">SCORE</span><span class="stat-row-value" id="ps-score">—</span></div>
+        <div class="stat-row"><span class="stat-row-label">KILLS</span><span class="stat-row-value" id="ps-kills">—</span></div>
+        <div class="stat-row"><span class="stat-row-label">VAGUE</span><span class="stat-row-value" id="ps-wave">—</span></div>
+        <div class="stat-row"><span class="stat-row-label">MULT. SCORE</span><span class="stat-row-value" id="ps-mult">—</span></div>
+      </div>
+      <div id="pause-buffs">
+        <div class="info-section-title">CAPACITÉS ACTIVES</div>
+        <div id="active-buffs-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Practice badge (shown during practice fight) -->
+  <div id="bossfight-badge" class="hidden">💀 BOSS FIGHT</div>
+
+  <!-- Practice setup screen -->
+  <div id="bossfight-screen" class="hidden">
+    <h2>BOSS FIGHT</h2>
+    <p>CHOISISSEZ VOTRE BOSS ET 10 POUVOIRS — PUIS AFFRONTEZ-LE</p>
+    <div id="bossfight-layout">
+      <div id="bossfight-boss-col">
+        <div class="bf-col-title">BOSS À AFFRONTER</div>
+        <div id="bossfight-boss-list"></div>
+      </div>
+      <div id="bossfight-buff-col">
+        <div class="bf-col-title">POUVOIRS DE DÉPART</div>
+        <div id="bossfight-buff-counter"><span class="used">0</span> <span class="total">/ 10 SÉLECTIONNÉS</span></div>
+        <div id="bossfight-buff-grid"></div>
+      </div>
+    </div>
+    <div id="bossfight-footer">
+      <button class="bf-btn" id="bf-cancel" onclick="closeBossFight()">ANNULER</button>
+      <button class="bf-btn" id="bf-start" onclick="startBossFight()" disabled>▶ LANCER</button>
+    </div>
+  </div>
+
+  <!-- In-game drop popup -->
+  <div id="drop-popup" class="hidden">
+    <span id="drop-popup-icon">🎁</span>
+    <div id="drop-popup-title"></div>
+    <div id="drop-popup-name"></div>
+    <div id="drop-popup-desc"></div>
+  </div>
+
+  <!-- Teleport CD HUD -->
+  <div id="tp-cooldown-hud" class="hidden">📍 TÉLÉPORT : PRÊT</div>
+
+  <!-- Familiar CD HUD -->
+  <div id="familiar-hud" class="hidden">🐾 FAMILIER : PRÊT</div>
+
+  <!-- Countdown screen -->
+  <div id="countdown-screen" class="hidden">
+    <div id="countdown-number">3</div>
+    <div id="countdown-label">REPRISE DANS...</div>
+  </div>
+
+  <!-- Name input overlay (shown at game over before saving) -->
+  <div id="name-input-screen" class="hidden">
+    <h2>PARTIE TERMINÉE</h2>
+    <p>ENTREZ VOTRE NOM POUR SAUVEGARDER</p>
+    <input id="player-name-input" type="text" maxlength="16" placeholder="VOTRE NOM" autocomplete="off" spellcheck="false"/>
+    <button id="name-submit-btn" onclick="submitScore()">SAUVEGARDER</button>
+    <div class="name-score-preview" id="name-preview">—</div>
+  </div>
+</div>
+
+<!-- Scoreboard toggle tab (outside game wrapper, fixed) -->
+<button id="sb-toggle" onclick="toggleScoreboard()">SCORES</button>
+
+<!-- Scoreboard panel -->
+<div id="sb-panel">
+  <div id="sb-header">
+    <h3>SCOREBOARD</h3>
+    <p>TOP 10 · ONE AGAINST ALL</p>
+  </div>
+  <div id="sb-list"><div id="sb-empty">AUCUNE PARTIE SAUVEGARDÉE<br>JOUEZ ET INSCRIVEZ-VOUS !</div></div>
+  <div id="sb-footer">
+    <button id="sb-clear-btn" onclick="clearScores()">⚠ EFFACER TOUS LES SCORES</button>
+  </div>
+</div>
+
+<!-- Run detail modal -->
+<div id="run-detail-modal" class="hidden">
+  <div id="rdm-header">
+    <div>
+      <div id="rdm-name">—</div>
+      <div id="rdm-date">—</div>
+    </div>
+    <button id="rdm-close" onclick="closeRunDetail()">✕</button>
+  </div>
+  <div id="rdm-body"></div>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const W = 900, H = 600;
+
+// --- STATE ---
+let state = {
+  player: null, bullets: [], enemies: [], particles: [],
+  enemyBullets: [],
+  wave: 1, score: 0, kills: 0,
+  phase: 'start', // start | playing | buffing | dead
+  enemiesToSpawn: 0, spawnTimer: 0, spawnInterval: 60,
+  waveAnnounceTimer: 0,
+  mouse: { x: W/2, y: H/2 },
+  keys: {},
+  shootCooldown: 0,
+  buffs: { maxHp: 100, damage: 1, speed: 1 },
+};
+
+// Input
+document.addEventListener('keydown', e => {
+  state.keys[e.key.toLowerCase()] = true;
+  // Teleport on E
+  if (e.key.toLowerCase() === 'e' && TELEPORT_UNLOCKED && TELEPORT_CD <= 0 && state.phase === 'playing') {
+    const p2 = state.player;
+    // Clamp to arena
+    p2.x = Math.max(p2.r+2, Math.min(W-p2.r-2, state.mouse.x));
+    p2.y = Math.max(p2.r+2, Math.min(H-p2.r-2, state.mouse.y));
+    TELEPORT_CD = TELEPORT_CD_MAX;
+    p2.iframes = Math.max(p2.iframes, 20);
+    for(let i=0;i<16;i++) particles(p2.x, p2.y, '#cc44ff', 1);
+  }
+  // Familiar summon on A
+  if (e.key.toLowerCase() === 'a' && FAMILIAR_UNLOCKED && FAMILIAR_CD <= 0 && state.phase === 'playing' && familiars.length < 3) {
+    familiars.push({ x: state.player.x, y: state.player.y, hp: 25, maxHp: 25, r: 8, shootTimer: 0, color: '#ffaa00' });
+    FAMILIAR_CD = FAMILIAR_CD_MAX;
+  }
+    if (e.key === 'Escape') {
+    if (!BOSSFIGHT_MODE && state.phase === 'playing') pauseGame();
+    else if (!BOSSFIGHT_MODE && state.phase === 'paused' && !countingDown) resumeGame();
+  }
+});
+document.addEventListener('keyup', e => { state.keys[e.key.toLowerCase()] = false; });
+
+// Buff acquisition history for the pause panel
+let acquiredBuffs = []; // { id, name, icon, desc, rare, count }
+
+function recordBuff(b) {
+  const existing = acquiredBuffs.find(x => x.id === b.id);
+  if (existing) existing.count++;
+  else acquiredBuffs.push({ id: b.id, name: b.name, icon: b.icon, desc: b.desc, rare: b.rare, count: 1 });
+}
+
+function pauseGame() {
+  state.phase = 'paused';
+  state.shooting = false;
+  populatePausePanel();
+  document.getElementById('pause-screen').classList.remove('hidden');
+}
+
+function resumeGame() {
+  document.getElementById('pause-screen').classList.add('hidden');
+  startCountdown(() => {
+    state.phase = 'playing';
+  });
+}
+
+let countingDown = false;
+let countdownInterval = null;
+
+function startCountdown(cb) {
+  if (countingDown) return;
+  countingDown = true;
+  if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
+  let n = 3;
+  const el = document.getElementById('countdown-number');
+  const screen = document.getElementById('countdown-screen');
+  el.textContent = n;
+  screen.classList.remove('hidden');
+  void el.offsetWidth;
+  el.style.animation = 'none';
+  void el.offsetWidth;
+  el.style.animation = 'cdpulse 1s ease-out';
+
+  countdownInterval = setInterval(() => {
+    n--;
+    if (n <= 0) {
+      clearInterval(countdownInterval);
+      countdownInterval = null;
+      countingDown = false;
+      screen.classList.add('hidden');
+      cb();
+    } else {
+      el.textContent = n;
+      void el.offsetWidth;
+      el.style.animation = 'none';
+      void el.offsetWidth;
+      el.style.animation = 'cdpulse 1s ease-out';
+    }
+  }, 1000);
+}
+
+function populatePausePanel() {
+  const p = state.player;
+  if (!p) return;
+
+  // Stats
+  const hpPct = Math.round(p.hp / p.maxHp * 100);
+  const hpEl = document.getElementById('ps-hp');
+  hpEl.textContent = `${Math.max(0, Math.round(p.hp))} / ${p.maxHp}`;
+  hpEl.className = 'stat-row-value' + (hpPct <= 25 ? ' danger' : hpPct <= 50 ? ' warn' : '');
+  document.getElementById('ps-maxhp').textContent = p.maxHp;
+  document.getElementById('ps-dmg').textContent = `×${state.buffs.damage.toFixed(1)}`;
+  const spdVal = (2.8 + (state.buffs.speed - 1) * 1.5).toFixed(1);
+  document.getElementById('ps-spd').textContent = spdVal;
+  const frVal = Math.max(3, Math.round(10 / (1 + FIRE_RATE_BONUS)));
+  document.getElementById('ps-fr').textContent = `${frVal} ticks`;
+  document.getElementById('ps-r').textContent = `${Math.round(p.r)}px`;
+  document.getElementById('ps-orbs').textContent = ORB_COUNT > 0 ? `${ORB_COUNT} orbe${ORB_COUNT > 1 ? 's' : ''}` : 'aucun';
+  document.getElementById('ps-score').textContent = state.score.toLocaleString();
+  document.getElementById('ps-kills').textContent = state.kills;
+  document.getElementById('ps-wave').textContent = state.wave;
+  document.getElementById('ps-mult').textContent = `×${SCORE_MULT.toFixed(1)}`;
+  // Boss drops row — add dynamically
+  const bossDrops = [];
+  if (ARMOR) bossDrops.push('🦾 Armure');
+  if (HOMING) bossDrops.push('🔮 Homing');
+  if (MINION_SPAWN) bossDrops.push('🐝 Nuée');
+  const existingBoss = document.getElementById('ps-boss-row');
+  if (existingBoss) existingBoss.remove();
+  if (bossDrops.length > 0) {
+    const row = document.createElement('div');
+    row.id = 'ps-boss-row';
+    row.className = 'stat-row';
+    row.innerHTML = `<span class="stat-row-label">BOSS DROPS</span><span class="stat-row-value rare">${bossDrops.join(' ')}</span>`;
+    document.getElementById('pause-stats').appendChild(row);
+  }
+
+  // Active buffs list
+  const list = document.getElementById('active-buffs-list');
+  list.innerHTML = '';
+  if (acquiredBuffs.length === 0) {
+    list.innerHTML = '<div style="font-size:10px;color:rgba(0,255,221,0.25);letter-spacing:2px">AUCUNE CAPACITÉ ACQUISE</div>';
+    return;
+  }
+  acquiredBuffs.forEach(b => {
+    const row = document.createElement('div');
+    row.className = 'active-buff-row' + (b.rare ? ' rare-buff' : '');
+    row.innerHTML = `
+      <span class="active-buff-icon">${b.icon}</span>
+      <div class="active-buff-info">
+        <div class="active-buff-name">${b.name}${b.rare ? ' ★' : ''}</div>
+        <div class="active-buff-desc">${b.desc}</div>
+      </div>
+      ${b.count > 1 ? `<span class="active-buff-count">×${b.count}</span>` : ''}
+    `;
+    list.appendChild(row);
+  });
+}
+canvas.addEventListener('mousemove', e => {
+  const r = canvas.getBoundingClientRect();
+  state.mouse.x = e.clientX - r.left;
+  state.mouse.y = e.clientY - r.top;
+});
+canvas.addEventListener('mousedown', () => { if (state.phase === 'playing') state.shooting = true; });
+canvas.addEventListener('mouseup', () => { state.shooting = false; });
+
+function startGame() {
+  BOSSFIGHT_MODE = false;
+  document.getElementById('bossfight-badge').classList.add('hidden');
+  document.getElementById('bossfight-screen').classList.add('hidden');
+  document.getElementById('go-bossfight-btn').style.display = 'none';
+  // Reset game over sub text if it was changed by practice victory
+  const sub = document.querySelector('#gameover-screen .overlay-sub');
+  if (sub) { sub.textContent = 'GAME OVER'; sub.style.color = ''; }
+  document.getElementById('start-screen').classList.add('hidden');
+  document.getElementById('gameover-screen').classList.add('hidden');
+  document.getElementById('pause-screen').classList.add('hidden');
+  document.getElementById('countdown-screen').classList.add('hidden');
+  document.getElementById('name-input-screen').classList.add('hidden');
+  if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
+  countingDown = false;
+  state.player = { x: W/2, y: H/2, r: 12, hp: 100, maxHp: 100, iframes: 0 };
+  state.bullets = [];
+  state.enemies = [];
+  state.particles = [];
+  state.enemyBullets = [];
+  state.wave = 1;
+  state.score = 0;
+  state.kills = 0;
+  state.phase = 'playing';
+  window._gameStartTime = Date.now();
+  state.buffs = { maxHp: 100, damage: 1, speed: 1 };
+  state.shooting = false;
+  state.shootCooldown = 0;
+  state.orbs = []; state.shockwaveTimer = 0; state.bulletTimeTimer = 0;
+  state.regenTimer = 0; state.timeScale = 1; state.shockwavePulse = 0; state.orbAngle = 0;
+  acquiredBuffs = [];
+  FIRE_RATE_BONUS = 0; PIERCING = false; TRIPLE_SHOT = false;
+  BIGGER_BULLETS = false; BULLET_SPEED_BONUS = 0; EXPLOSION_ON_KILL = false;
+  VAMPIRISM = false; VAMPIRISM_STACKS = 0; SHIELD_ACTIVE = false; PASSIVE_REGEN = false;
+  I_FRAME_BONUS = 0; SCORE_MULT = 1;
+  ORB_COUNT = 0; CHAIN_LIGHTNING = false; SHOCKWAVE = false;
+  BULLET_TIME = false; FREEZE_CHANCE = 0; BACK_SHOT = false;
+  ARMOR = false; HOMING = false; MINION_SPAWN = false;
+  boss = null; allies = []; familiars = [];
+  TELEPORT_UNLOCKED = false; TELEPORT_CD = 0;
+  FAMILIAR_UNLOCKED = false; FAMILIAR_CD = 0;
+  ORB_DAMAGE_MULT = 1.0; ORB_SPEED_MULT = 1.0; ORB_SIZE_MULT = 1.0;
+  document.getElementById('boss-bar-wrapper').classList.remove('visible');
+  document.getElementById('boss-drop-screen').classList.add('hidden');
+  startWave();
+  if (loopId) cancelAnimationFrame(loopId);
+  loop();
+}
+
+function startWave() {
+  const w = state.wave;
+  state.enemiesToSpawn = 4 + w * 3;
+  state.spawnTimer = 0;
+  state.spawnInterval = Math.max(15, 60 - w * 3);
+  // Announce
+  const el = document.getElementById('wave-announce');
+  el.textContent = `VAGUE ${w}`;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2000);
+  document.getElementById('hud-wave').textContent = String(w).padStart(2,'0');
+}
+
+function spawnEnemy() {
+  const w = state.wave;
+  const side = Math.floor(Math.random()*4);
+  let x, y;
+  if (side===0) { x=Math.random()*W; y=-20; }
+  else if (side===1) { x=W+20; y=Math.random()*H; }
+  else if (side===2) { x=Math.random()*W; y=H+20; }
+  else { x=-20; y=Math.random()*H; }
+
+  // Type based on wave
+  let type = 'melee';
+  const r = Math.random();
+  if (w >= 3 && r < 0.15) type = 'ranged';
+  else if (w >= 2 && r < 0.3) type = 'fast';
+  else if (w >= 4 && r < 0.45) type = 'tank';
+
+  const configs = {
+    melee:  { r:10, hp:1+Math.floor(w*0.5), speed:1.2+w*0.05, color:'#ff2244', score:10 },
+    fast:   { r:8,  hp:1+Math.floor(w*0.3), speed:2.2+w*0.08, color:'#ff8800', score:15 },
+    tank:   { r:16, hp:3+Math.floor(w*0.8), speed:0.7+w*0.03, color:'#cc44ff', score:25 },
+    ranged: { r:10, hp:2+Math.floor(w*0.4), speed:1.0+w*0.04, color:'#2266ff', score:20, shootTimer:0, shootInterval:120 },
+  };
+
+  const cfg = configs[type];
+  state.enemies.push({ x, y, ...cfg, type, maxHp: cfg.hp });
+}
+
+function fireBullet(from, to, speed, damage, color, owner) {
+  const dx = to.x - from.x, dy = to.y - from.y;
+  const len = Math.sqrt(dx*dx+dy*dy) || 1;
+  const arr = owner === 'player' ? state.bullets : state.enemyBullets;
+  arr.push({ x: from.x, y: from.y, vx: dx/len*speed, vy: dy/len*speed,
+    r: owner==='player' ? 5 : 4, damage, color, life: 80, owner });
+}
+
+function particles(x, y, color, n=6) {
+  for (let i=0;i<n;i++) {
+    const angle = Math.random()*Math.PI*2;
+    const speed = 1+Math.random()*3;
+    state.particles.push({ x, y, vx: Math.cos(angle)*speed, vy: Math.sin(angle)*speed,
+      life: 30+Math.random()*20, maxLife: 50, color, r: 2+Math.random()*2 });
+  }
+}
+
+function update() {
+  if (state.phase !== 'playing') return;
+  const p = state.player;
+  const spd = (2.8 + (state.buffs.speed-1)*1.5);
+
+  // Move player
+  let dx=0, dy=0;
+  if (state.keys['z']||state.keys['arrowup']) dy-=1;
+  if (state.keys['s']||state.keys['arrowdown']) dy+=1;
+  if (state.keys['q']||state.keys['arrowleft']) dx-=1;
+  if (state.keys['d']||state.keys['arrowright']) dx+=1;
+  if (dx||dy) { const l=Math.sqrt(dx*dx+dy*dy); p.x+=dx/l*spd; p.y+=dy/l*spd; }
+  p.x = Math.max(p.r, Math.min(W-p.r, p.x));
+  p.y = Math.max(p.r, Math.min(H-p.r, p.y));
+
+  // Shoot
+  const baseCooldown = Math.max(3, Math.round(10 / (1 + FIRE_RATE_BONUS)));
+  if (state.shooting && state.shootCooldown <= 0) {
+    const bColor = TRIPLE_SHOT > 0 ? '#ffdd00' : (PIERCING ? '#ff44ff' : (FREEZE_CHANCE > 0 ? '#88eeff' : '#00ffdd'));
+    fireBullet(p, state.mouse, 12 + BULLET_SPEED_BONUS, state.buffs.damage, bColor, 'player');
+    if (TRIPLE_SHOT > 0) {
+      const ang = Math.atan2(state.mouse.y-p.y, state.mouse.x-p.x);
+      // Each stack adds 2 more bullets with increasing spread
+      for (let ts = 1; ts <= TRIPLE_SHOT; ts++) {
+        const spread = 0.18 * ts;
+        fireBullet(p, {x:p.x+Math.cos(ang+spread)*100,y:p.y+Math.sin(ang+spread)*100}, 12+BULLET_SPEED_BONUS, state.buffs.damage*0.8, bColor, 'player');
+        fireBullet(p, {x:p.x+Math.cos(ang-spread)*100,y:p.y+Math.sin(ang-spread)*100}, 12+BULLET_SPEED_BONUS, state.buffs.damage*0.8, bColor, 'player');
+      }
+    }
+    if (BACK_SHOT) {
+      // Shoot in opposite direction
+      const ang2 = Math.atan2(state.mouse.y-p.y, state.mouse.x-p.x) + Math.PI;
+      fireBullet(p, {x:p.x+Math.cos(ang2)*100,y:p.y+Math.sin(ang2)*100}, 12+BULLET_SPEED_BONUS, state.buffs.damage*0.7, '#ff8844', 'player');
+    }
+    state.shootCooldown = baseCooldown;
+    particles(p.x, p.y, bColor, 3);
+  }
+  if (state.shootCooldown > 0) state.shootCooldown--;
+
+  // Orbs update — orbit around player
+  if (ORB_COUNT > 0) {
+    state.orbAngle = (state.orbAngle || 0) + 0.04 * ORB_SPEED_MULT;
+    const orbR = 7 * ORB_SIZE_MULT;
+    const orbDmg = 0.3 * ORB_DAMAGE_MULT;
+    for (let oi = 0; oi < ORB_COUNT; oi++) {
+      const oa = state.orbAngle + (oi / ORB_COUNT) * Math.PI * 2;
+      const ox = p.x + Math.cos(oa) * 36;
+      const oy = p.y + Math.sin(oa) * 36;
+      for (let ei = state.enemies.length-1; ei >= 0; ei--) {
+        const e = state.enemies[ei];
+        const ddx=ox-e.x, ddy=oy-e.y;
+        if (Math.sqrt(ddx*ddx+ddy*ddy) < e.r + orbR) {
+          e.hp -= orbDmg;
+          particles(ox, oy, '#ffcc00', 2);
+          if (e.hp <= 0) {
+            particles(e.x, e.y, e.color, 12);
+            state.score += Math.round(e.score * state.wave * SCORE_MULT);
+            state.kills++;
+            if (VAMPIRISM) p.hp = Math.min(p.maxHp, p.hp + Math.min(5, 1+VAMPIRISM_STACKS));
+            state.enemies.splice(ei, 1);
+          }
+        }
+      }
+    }
+  }
+
+  // Shockwave — every 10s repel nearby enemies
+  if (SHOCKWAVE) {
+    state.shockwaveTimer++;
+    if (state.shockwaveTimer >= 600) {
+      state.shockwaveTimer = 0;
+      state.shockwavePulse = 1; // visual pulse
+      for (let ei = state.enemies.length-1; ei >= 0; ei--) {
+        const e = state.enemies[ei];
+        const ddx=e.x-p.x, ddy=e.y-p.y;
+        const dist2 = Math.sqrt(ddx*ddx+ddy*ddy);
+        if (dist2 < 150) {
+          const push = 8;
+          e.x += ddx/dist2*push*3;
+          e.y += ddy/dist2*push*3;
+          e.hp -= 1;
+          particles(e.x, e.y, '#00ffdd', 4);
+        }
+      }
+    }
+  }
+  if (state.shockwavePulse > 0) state.shockwavePulse = (state.shockwavePulse||0) - 0.03;
+
+  // Bullet time — slow enemies when hp < 25%
+  const inDanger = p.hp / p.maxHp < 0.25;
+  const timeScale = (BULLET_TIME && inDanger) ? 0.4 : 1;
+  state.timeScale = timeScale;
+  if (p.iframes > 0) p.iframes--;
+
+  // Spawn
+  if (state.enemiesToSpawn > 0) {
+    state.spawnTimer++;
+    if (state.spawnTimer >= state.spawnInterval) {
+      spawnEnemy();
+      state.enemiesToSpawn--;
+      state.spawnTimer = 0;
+    }
+  }
+
+  // Update enemies
+  for (let i = state.enemies.length-1; i >= 0; i--) {
+    const e = state.enemies[i];
+    const dx2 = p.x - e.x, dy2 = p.y - e.y;
+    const dist = Math.sqrt(dx2*dx2+dy2*dy2);
+    const eff = (e.frozen > 0) ? 0.2 : state.timeScale;
+    if (e.type !== 'ranged' || dist > 120) {
+      e.x += dx2/dist*e.speed*eff;
+      e.y += dy2/dist*e.speed*eff;
+    }
+    if (e.frozen > 0) e.frozen--;
+    // Ranged enemy shoots
+    if (e.type === 'ranged') {
+      e.shootTimer++;
+      if (e.shootTimer >= e.shootInterval / eff) {
+        fireBullet(e, p, 3.5*eff, 1, '#2266ff', 'enemy');
+        e.shootTimer = 0;
+      }
+    }
+    // Melee damage
+    if (dist < p.r + e.r && p.iframes <= 0) {
+      if (SHIELD_ACTIVE) {
+        SHIELD_ACTIVE = false;
+        p.iframes = 60;
+        particles(p.x, p.y, '#aaddff', 16);
+      } else {
+        p.hp -= ARMOR ? 7 : 10;
+        p.iframes = 40 + I_FRAME_BONUS;
+        particles(p.x, p.y, '#ff2244', 8);
+      }
+    }
+  }
+
+  // Player bullets vs enemies
+  for (let bi = state.bullets.length-1; bi >= 0; bi--) {
+    const b = state.bullets[bi];
+    b.x += b.vx; b.y += b.vy; b.life--;
+    if (b.life <= 0 || b.x<0||b.x>W||b.y<0||b.y>H) { state.bullets.splice(bi,1); continue; }
+    let hitAny = false;
+    // Track already-hit enemies this frame for piercing (avoid double-hit same enemy)
+    for (let ei = state.enemies.length-1; ei >= 0; ei--) {
+      const e = state.enemies[ei];
+      const dx2=b.x-e.x, dy2=b.y-e.y;
+      const hitR = e.r + b.r + (BIGGER_BULLETS ? 4 : 0);
+      if (Math.sqrt(dx2*dx2+dy2*dy2) < hitR) {
+        e.hp -= b.damage;
+        particles(b.x, b.y, e.color, 5);
+        hitAny = true;
+        // Freeze chance (capped at 75%)
+        if (FREEZE_CHANCE > 0 && Math.random() < Math.min(0.75, FREEZE_CHANCE)) {
+          e.frozen = (e.frozen||0) + 90;
+          particles(e.x, e.y, '#88eeff', 6);
+        }
+        if (e.hp <= 0) {
+          const ex = e.x, ey = e.y; // store pos before splice
+          // EXPLOSION — large visible burst
+          if (EXPLOSION_ON_KILL) {
+            const expR = 90;
+            for (let ni = state.enemies.length-1; ni >= 0; ni--) {
+              if (ni === ei) continue;
+              const ne = state.enemies[ni];
+              const ddx=ne.x-ex, ddy=ne.y-ey;
+              if (Math.sqrt(ddx*ddx+ddy*ddy) < expR) {
+                ne.hp -= b.damage * 1.2;
+              }
+            }
+            // Big explosion visual
+            for (let k=0;k<30;k++) particles(ex + (Math.random()-0.5)*expR, ey + (Math.random()-0.5)*expR, '#ff8800', 1);
+            for (let k=0;k<15;k++) particles(ex, ey, '#ffdd00', 1);
+            // Store explosion ring for draw
+            state.explosions = state.explosions || [];
+            state.explosions.push({ x:ex, y:ey, r:0, maxR:expR, life:20 });
+          }
+          // CHAIN LIGHTNING — arc to nearest, can chain kill
+          if (CHAIN_LIGHTNING) {
+            let closest = null, closestDist = 999;
+            for (let ni = state.enemies.length-1; ni >= 0; ni--) {
+              if (ni === ei) continue;
+              const ne = state.enemies[ni];
+              const d = Math.hypot(ne.x-ex, ne.y-ey);
+              if (d < closestDist) { closestDist=d; closest=ne; }
+            }
+            if (closest && closestDist < 220) {
+              closest.hp -= b.damage * 1.5;
+              // Bright lightning arc
+              for (let s=0;s<12;s++) {
+                const t=s/12;
+                const lx=ex+(closest.x-ex)*t+(Math.random()-0.5)*28;
+                const ly=ey+(closest.y-ey)*t+(Math.random()-0.5)*28;
+                particles(lx, ly, '#ffff44', 1);
+              }
+              particles(closest.x, closest.y, '#ffff44', 6);
+            }
+          }
+          particles(ex, ey, e.color, 14);
+          state.score += Math.round(e.score * state.wave * SCORE_MULT);
+          state.kills++;
+          // VAMPIRISM — capped at +5 PV per kill regardless of stacks
+          if (VAMPIRISM) p.hp = Math.min(p.maxHp, p.hp + Math.min(5, 1 + VAMPIRISM_STACKS));
+          if (MINION_SPAWN && Math.random() < 0.2) {
+            allies.push({ x: ex, y: ey, r: 7, life: 300, color: '#ffdd44' });
+          }
+          state.enemies.splice(ei,1);
+        }
+        // PIERCING: don't stop bullet, but don't re-hit same frame handled by loop direction
+        if (!PIERCING) break;
+      }
+    }
+    if (hitAny && !PIERCING) state.bullets.splice(bi,1);
+  }
+
+  // Enemy bullets vs player
+  for (let bi = state.enemyBullets.length-1; bi >= 0; bi--) {
+    const b = state.enemyBullets[bi];
+    b.x += b.vx; b.y += b.vy; b.life--;
+    if (b.life<=0||b.x<0||b.x>W||b.y<0||b.y>H) { state.enemyBullets.splice(bi,1); continue; }
+    const dx2=b.x-p.x, dy2=b.y-p.y;
+    if (Math.sqrt(dx2*dx2+dy2*dy2) < p.r+b.r && p.iframes<=0) {
+      if (SHIELD_ACTIVE) {
+        SHIELD_ACTIVE = false;
+        p.iframes = 60;
+        particles(p.x, p.y, '#aaddff', 16);
+      } else {
+        p.hp -= ARMOR ? 6 : 8;
+        p.iframes = 20;
+        particles(p.x, p.y, '#ff2244', 6);
+      }
+      state.enemyBullets.splice(bi,1);
+    }
+  }
+
+  // Particles
+  for (let i=state.particles.length-1;i>=0;i--) {
+    const pt = state.particles[i];
+    pt.x+=pt.vx; pt.y+=pt.vy; pt.vx*=0.9; pt.vy*=0.9; pt.life--;
+    if (pt.life<=0) state.particles.splice(i,1);
+  }
+
+  // Passive regen tick
+  if (PASSIVE_REGEN && state.kills > 0) {
+    state.regenTimer = (state.regenTimer||0) + 1;
+    if (state.regenTimer >= 180) { p.hp = Math.min(p.maxHp, p.hp+1); state.regenTimer=0; }
+  }
+
+  // Update boss
+  if (boss) updateBoss();
+
+  // Update allies (minion spawn)
+  if (allies.length > 0) updateAllies();
+
+  // Update familiars
+  updateFamiliars();
+
+  // Tick teleport + familiar CDs
+  if (TELEPORT_CD > 0) {
+    TELEPORT_CD--;
+    const tpEl = document.getElementById('tp-cooldown-hud');
+    if (tpEl) {
+      tpEl.classList.remove('hidden');
+      if (TELEPORT_CD > 0) {
+        tpEl.textContent = `📍 TÉLÉPORT : ${(TELEPORT_CD/60).toFixed(1)}s`;
+        tpEl.style.color = 'rgba(204,68,255,0.5)';
+      } else {
+        tpEl.textContent = '📍 TÉLÉPORT : PRÊT';
+        tpEl.style.color = 'rgba(204,68,255,0.9)';
+      }
+    }
+  } else if (TELEPORT_UNLOCKED) {
+    const tpEl = document.getElementById('tp-cooldown-hud');
+    if (tpEl) { tpEl.classList.remove('hidden'); tpEl.textContent = '📍 TÉLÉPORT : PRÊT'; tpEl.style.color = 'rgba(204,68,255,0.9)'; }
+  } else {
+    document.getElementById('tp-cooldown-hud')?.classList.add('hidden');
+  }
+  if (FAMILIAR_CD > 0) {
+    FAMILIAR_CD--;
+    const fEl = document.getElementById('familiar-hud');
+    if (fEl) {
+      fEl.classList.remove('hidden');
+      if (FAMILIAR_CD > 0) {
+        fEl.textContent = `🐾 FAMILIER : ${(FAMILIAR_CD/60).toFixed(1)}s (${familiars.length}/3)`;
+        fEl.style.color = 'rgba(255,170,0,0.5)';
+      } else {
+        fEl.textContent = `🐾 FAMILIER : PRÊT (${familiars.length}/3)`;
+        fEl.style.color = 'rgba(255,170,0,0.9)';
+      }
+    }
+  } else if (FAMILIAR_UNLOCKED) {
+    const fEl = document.getElementById('familiar-hud');
+    if (fEl) { fEl.classList.remove('hidden'); fEl.textContent = `🐾 FAMILIER : PRÊT (${familiars.length}/3)`; fEl.style.color = 'rgba(255,170,0,0.9)'; }
+  } else {
+    document.getElementById('familiar-hud')?.classList.add('hidden');
+  }
+
+  // HOMING on regular bullets toward nearest enemy (non-boss)
+  if (HOMING && !boss) {
+    state.bullets.forEach(b => {
+      let nearest = null, nd = 9999;
+      state.enemies.forEach(e => { const d=Math.hypot(e.x-b.x,e.y-b.y); if(d<nd){nd=d;nearest=e;} });
+      if (nearest) {
+        const hx=nearest.x-b.x, hy=nearest.y-b.y, hl=Math.sqrt(hx*hx+hy*hy)||1;
+        b.vx += hx/hl*0.35; b.vy += hy/hl*0.35;
+        const spd=Math.sqrt(b.vx*b.vx+b.vy*b.vy), ms=12+BULLET_SPEED_BONUS;
+        if(spd>ms){b.vx=b.vx/spd*ms;b.vy=b.vy/spd*ms;}
+      }
+    });
+  }
+
+  // Death
+  if (p.hp <= 0) {
+    state.phase = 'dead';
+    if (BOSSFIGHT_MODE) {
+      // Skip name input / score saving in practice
+      document.getElementById('death-score').textContent = state.score.toLocaleString();
+      document.getElementById('go-wave').textContent = state.wave;
+      document.getElementById('go-kills').textContent = state.kills;
+      document.getElementById('go-bossfight-btn').style.display = '';
+      document.getElementById('gameover-screen').classList.remove('hidden');
+    } else {
+      document.getElementById('go-bossfight-btn').style.display = 'none';
+      showNameInput();
+    }
+    return;
+  }
+
+  // Wave clear
+  if (!BOSSFIGHT_MODE && !boss && state.enemiesToSpawn === 0 && state.enemies.length === 0) {
+    const nextWave = state.wave + 1;
+    if (isBossWave(nextWave)) {
+      state.wave = nextWave;
+      startBossWave();
+    } else {
+      state.wave = nextWave;
+      state.phase = 'buffing';
+      showBuffs();
+    }
+  }
+
+  // Update HUD
+  document.getElementById('hud-score').textContent = state.score;
+  const enemyCount = state.enemies.length + state.enemiesToSpawn + (boss ? 1 : 0);
+  document.getElementById('hud-enemies').textContent = enemyCount;
+  const hpPct = Math.max(0, p.hp / p.maxHp * 100);
+  document.getElementById('health-bar-fill').style.width = hpPct + '%';
+}
+
+// ─── BOSS SYSTEM ───────────────────────────────────────────────
+const BOSS_DEFS = {
+  titan: {
+    name: 'LE TITAN',
+    color: '#ff3300',
+    r: 34,
+    hpBase: 120,
+    speed: 0.7,
+    intro: { label: '⚠ BOSS ⚠', color: '#ff3300' },
+    drop: {
+      id: 'armor', icon: '🦾', name: 'ARMURE',
+      desc: 'Réduit tous les dégâts reçus de 30%.',
+      rare: true,
+      apply: () => { ARMOR = true; }
+    },
+    // AI state
+    initAI: (b) => { b.chargeTimer = 0; b.chargeCooldown = 180; b.charging = false; b.chargeVx = 0; b.chargeVy = 0; b.chargeLife = 0; b.telegraphTimer = 0; },
+    updateAI: (b, p) => {
+      if (b.charging) {
+        b.x += b.chargeVx * 9;
+        b.y += b.chargeVy * 9;
+        b.chargeLife--;
+        particles(b.x, b.y, b.color, 2);
+        if (b.chargeLife <= 0) { b.charging = false; b.chargeCooldown = 160; }
+        // Clamp
+        b.x = Math.max(b.r, Math.min(W-b.r, b.x));
+        b.y = Math.max(b.r, Math.min(H-b.r, b.y));
+      } else {
+        // Slowly approach
+        const dx = p.x-b.x, dy = p.y-b.y, d = Math.sqrt(dx*dx+dy*dy)||1;
+        b.x += dx/d*b.speed; b.y += dy/d*b.speed;
+        b.chargeCooldown--;
+        if (b.chargeCooldown <= 30 && !b.telegraphing) {
+          b.telegraphing = true; b.telegraphTimer = 30;
+        }
+        if (b.telegraphing) {
+          b.telegraphTimer--;
+          if (b.telegraphTimer <= 0) {
+            b.telegraphing = false;
+            b.charging = true;
+            const dx2=p.x-b.x, dy2=p.y-b.y, d2=Math.sqrt(dx2*dx2+dy2*dy2)||1;
+            b.chargeVx = dx2/d2; b.chargeVy = dy2/d2;
+            b.chargeLife = 28;
+          }
+        }
+        if (b.chargeCooldown <= 0) b.chargeCooldown = 200;
+      }
+    }
+  },
+
+  spectre: {
+    name: 'LE SPECTRE',
+    color: '#cc44ff',
+    r: 22,
+    hpBase: 80,
+    speed: 1.8,
+    intro: { label: '⚠ BOSS ⚠', color: '#cc44ff' },
+    drop: {
+      id: 'homing', icon: '🔮', name: 'ŒIL DU CHASSEUR',
+      desc: 'Vos projectiles suivent légèrement les ennemis.',
+      rare: true,
+      apply: () => { HOMING = true; }
+    },
+    initAI: (b) => { b.visTimer = 0; b.visible = true; b.spiralAngle = 0; b.spiralTimer = 0; b.teleTimer = 200; },
+    updateAI: (b, p) => {
+      b.visTimer++;
+      // Blink visible/invisible
+      if (b.visTimer % 120 < 60) b.visible = true; else b.visible = false;
+      // Move toward player
+      const dx=p.x-b.x, dy=p.y-b.y, d=Math.sqrt(dx*dx+dy*dy)||1;
+      b.x += dx/d*b.speed; b.y += dy/d*b.speed;
+      // Teleport every 5s
+      b.teleTimer--;
+      if (b.teleTimer <= 0) {
+        b.teleTimer = 300;
+        // Teleport to random edge
+        const side=Math.floor(Math.random()*4);
+        if (side===0){b.x=50+Math.random()*(W-100);b.y=60;}
+        else if (side===1){b.x=W-60;b.y=50+Math.random()*(H-100);}
+        else if (side===2){b.x=50+Math.random()*(W-100);b.y=H-60;}
+        else {b.x=60;b.y=50+Math.random()*(H-100);}
+        for(let i=0;i<16;i++) particles(b.x,b.y,b.color,1);
+      }
+      // Spiral shots every 60 frames
+      b.spiralTimer++;
+      if (b.spiralTimer >= 60) {
+        b.spiralTimer = 0;
+        for (let i=0; i<8; i++) {
+          const a = b.spiralAngle + (i/8)*Math.PI*2;
+          state.enemyBullets.push({ x:b.x, y:b.y, vx:Math.cos(a)*3, vy:Math.sin(a)*3,
+            r:5, damage:10, color:b.color, life:90, owner:'enemy' });
+        }
+        b.spiralAngle += 0.4;
+      }
+    }
+  },
+
+  swarm: {
+    name: "L'ESSAIM",
+    color: '#00aaff',
+    r: 18,
+    hpBase: 90,
+    speed: 2.2,
+    intro: { label: '⚠ BOSS ⚠', color: '#00aaff' },
+    drop: {
+      id: 'minion', icon: '🐝', name: 'ÉCLAT DE NUÉE',
+      desc: '20% de chance qu\'un kill invoque un mini-allié pendant 5 secondes.',
+      rare: true,
+      apply: () => { MINION_SPAWN = true; }
+    },
+    initAI: (b) => {
+      b.orbitAngle = 0; b.fragments = [];
+      for(let i=0;i<3;i++) b.fragments.push({ angle: (i/3)*Math.PI*2, dist:80, r:12, hp:15, maxHp:15, respawnTimer:0 });
+      b.shootTimer = 0;
+    },
+    updateAI: (b, p) => {
+      const dx=p.x-b.x, dy=p.y-b.y, d=Math.sqrt(dx*dx+dy*dy)||1;
+      b.x += dx/d*b.speed*0.5; b.y += dy/d*b.speed*0.5;
+      b.orbitAngle += 0.022;
+      const closeFactor = Math.max(0.3, 1 - (1 - b.hp/b.maxHp)*0.6);
+      b.fragments.forEach((f, fi) => {
+        if (f.hp <= 0) {
+          // Respawn after 8s
+          f.respawnTimer = (f.respawnTimer||0) + 1;
+          if (f.respawnTimer >= 480) {
+            f.hp = f.maxHp; f.respawnTimer = 0; f.dist = 80;
+            particles(b.x + Math.cos(f.angle)*60, b.y + Math.sin(f.angle)*60, b.color, 10);
+          }
+          return;
+        }
+        f.angle = b.orbitAngle + (fi/3)*Math.PI*2;
+        f.dist = Math.max(30, f.dist * 0.998);
+        f.x = b.x + Math.cos(f.angle)*f.dist*closeFactor;
+        f.y = b.y + Math.sin(f.angle)*f.dist*closeFactor;
+      });
+      b.shootTimer++;
+      if (b.shootTimer >= 90) {
+        b.shootTimer = 0;
+        b.fragments.forEach(f => {
+          if (f.hp <= 0) return;
+          const dx2=p.x-f.x, dy2=p.y-f.y, d2=Math.sqrt(dx2*dx2+dy2*dy2)||1;
+          state.enemyBullets.push({ x:f.x, y:f.y, vx:dx2/d2*4, vy:dy2/d2*4,
+            r:4, damage:Math.round(8*(b.dmgMult||1)), color:b.color, life:80, owner:'enemy' });
+        });
+      }
+    }
+  }
+};
+
+let boss = null; // active boss object
+let ARMOR = false, HOMING = false, MINION_SPAWN = false;
+let allies = []; // active mini-allies
+
+function isBossWave(w) { return w % 10 === 0; }
+
+function startBossWave(forcedKey = null) {
+  state.enemies = []; state.enemyBullets = []; state.bullets = [];
+  state.enemiesToSpawn = 0;
+  // Pick boss
+  const keys = Object.keys(BOSS_DEFS);
+  const key = forcedKey || keys[Math.floor(Math.random()*keys.length)];
+  const def = BOSS_DEFS[key];
+  const waveTier = Math.floor(state.wave / 10);
+  const hpTotal = Math.round(def.hpBase * (1 + waveTier * 0.5) + state.wave * 5);
+  const bossSpeedMult = 1 + waveTier * 0.12;
+  boss = {
+    ...def,
+    x: W/2, y: -def.r,
+    hp: hpTotal, maxHp: hpTotal,
+    speed: def.speed * bossSpeedMult,
+    dmgMult: 1 + waveTier * 0.2, // boss attacks deal more dmg at higher tiers
+    def,
+  };
+  def.initAI(boss);
+  // Boss intro
+  const intro = document.getElementById('boss-intro');
+  const introName = document.getElementById('boss-intro-name');
+  introName.textContent = def.name;
+  introName.style.color = def.color;
+  introName.style.textShadow = `0 0 40px ${def.color}`;
+  intro.classList.add('show');
+  setTimeout(() => intro.classList.remove('show'), 2500);
+  // Boss bar
+  document.getElementById('boss-bar-name').textContent = def.name;
+  document.getElementById('boss-bar-name').style.color = def.color;
+  document.getElementById('boss-bar-fill').style.background = def.color;
+  document.getElementById('boss-bar-fill').style.boxShadow = `0 0 12px ${def.color}`;
+  document.getElementById('boss-bar-wrapper').classList.add('visible');
+  updateBossBar();
+}
+
+function updateBossBar() {
+  if (!boss) return;
+  const pct = Math.max(0, boss.hp / boss.maxHp * 100);
+  document.getElementById('boss-bar-fill').style.width = pct + '%';
+  document.getElementById('boss-bar-hp-text').textContent = `${Math.max(0,Math.round(boss.hp))} / ${boss.maxHp}`;
+}
+
+function updateFamiliars() {
+  if (familiars.length === 0) return;
+  const p = state.player;
+  familiars = familiars.filter(f => f.hp > 0);
+  familiars.forEach(f => {
+    // Follow player loosely
+    const dx=p.x-f.x, dy=p.y-f.y, d=Math.sqrt(dx*dx+dy*dy)||1;
+    if (d > 60) { f.x += dx/d*2.5; f.y += dy/d*2.5; }
+    // Shoot nearest enemy
+    f.shootTimer = (f.shootTimer||0) + 1;
+    if (f.shootTimer >= 40) {
+      f.shootTimer = 0;
+      let nearest = null, nd = 9999;
+      state.enemies.forEach(e => { const dist=Math.hypot(e.x-f.x,e.y-f.y); if(dist<nd&&dist<300){nd=dist;nearest=e;} });
+      if (boss) { const bd=Math.hypot(boss.x-f.x,boss.y-f.y); if(bd<nd){nearest=boss;nd=bd;} }
+      if (nearest) {
+        const dx2=nearest.x-f.x, dy2=nearest.y-f.y, dl=Math.sqrt(dx2*dx2+dy2*dy2)||1;
+        state.bullets.push({ x:f.x, y:f.y, vx:dx2/dl*9, vy:dy2/dl*9, r:4, damage:state.buffs.damage*0.5, color:'#ffaa00', life:70, owner:'familiar' });
+      }
+    }
+    // Enemy contact damage
+    state.enemies.forEach(e => {
+      if (Math.hypot(e.x-f.x,e.y-f.y) < e.r+f.r) {
+        f.hp -= 2;
+        particles(f.x, f.y, '#ffaa00', 3);
+      }
+    });
+    if (boss && Math.hypot(boss.x-f.x,boss.y-f.y) < boss.r+f.r) {
+      f.hp -= 3; particles(f.x, f.y, '#ffaa00', 3);
+    }
+  });
+}
+
+function updateBoss() {
+  if (!boss) return;
+  const p = state.player;
+  boss.def.updateAI(boss, p);
+
+  // Swarm fragment collision with player
+  if (boss.fragments) {
+    boss.fragments.forEach((f, fi) => {
+      if (f.hp <= 0) return;
+      const ddx=f.x-p.x, ddy=f.y-p.y;
+      if (Math.sqrt(ddx*ddx+ddy*ddy) < p.r + f.r && p.iframes <= 0) {
+        if (SHIELD_ACTIVE) { SHIELD_ACTIVE=false; p.iframes=60; particles(p.x,p.y,'#aaddff',16); }
+        else { p.hp -= ARMOR ? 7 : 10; p.iframes = 40+I_FRAME_BONUS; particles(p.x,p.y,'#ff2244',8); }
+      }
+    });
+  }
+
+  // Boss melee
+  const ddx=boss.x-p.x, ddy=boss.y-p.y;
+  if (Math.sqrt(ddx*ddx+ddy*ddy) < p.r + boss.r && p.iframes <= 0) {
+    if (SHIELD_ACTIVE) { SHIELD_ACTIVE=false; p.iframes=60; particles(p.x,p.y,'#aaddff',16); }
+    else { const bdmg = Math.round((ARMOR ? 10 : 15) * (boss.dmgMult||1)); p.hp -= bdmg; p.iframes = 40+I_FRAME_BONUS; particles(p.x,p.y,'#ff2244',10); }
+  }
+
+  // Titan telegraph visual
+  if (boss.telegraphing) {
+    particles(boss.x, boss.y, boss.color, 3);
+  }
+
+  // Bullets vs boss
+  for (let bi = state.bullets.length-1; bi >= 0; bi--) {
+    const b = state.bullets[bi];
+    b.x += b.vx; b.y += b.vy; b.life--;
+    if (b.life<=0||b.x<0||b.x>W||b.y<0||b.y>H) { state.bullets.splice(bi,1); continue; }
+
+    // HOMING nudge
+    if (HOMING) {
+      const hx=boss.x-b.x, hy=boss.y-b.y, hl=Math.sqrt(hx*hx+hy*hy)||1;
+      b.vx += hx/hl*0.4; b.vy += hy/hl*0.4;
+      const spd=Math.sqrt(b.vx*b.vx+b.vy*b.vy); const mspd=12+BULLET_SPEED_BONUS;
+      if(spd>mspd){b.vx=b.vx/spd*mspd;b.vy=b.vy/spd*mspd;}
+    }
+
+    let hitBoss = false;
+    // Hit swarm fragments first
+    if (boss.fragments) {
+      boss.fragments.forEach((f, fi) => {
+        if (f.hp <= 0 || hitBoss) return;
+        const fdx=b.x-f.x, fdy=b.y-f.y;
+        if (Math.sqrt(fdx*fdx+fdy*fdy) < f.r + b.r + (BIGGER_BULLETS?4:0)) {
+          f.hp -= b.damage;
+          particles(b.x, b.y, boss.color, 4);
+          hitBoss = true;
+          if (f.hp <= 0) { particles(f.x, f.y, boss.color, 12); }
+        }
+      });
+    }
+    // Hit boss core
+    const bdx=b.x-boss.x, bdy=b.y-boss.y;
+    if (!hitBoss && Math.sqrt(bdx*bdx+bdy*bdy) < boss.r + b.r + (BIGGER_BULLETS?4:0)) {
+      boss.hp -= b.damage;
+      particles(b.x, b.y, boss.color, 5);
+      hitBoss = true;
+      updateBossBar();
+    }
+    if (hitBoss && !PIERCING) state.bullets.splice(bi,1);
+  }
+
+  // Boss dead?
+  if (boss.hp <= 0) {
+    for(let i=0;i<40;i++) particles(boss.x+(Math.random()-0.5)*80, boss.y+(Math.random()-0.5)*80, boss.color, 1);
+    state.score += 500 * state.wave;
+    state.kills++;
+    document.getElementById('boss-bar-wrapper').classList.remove('visible');
+    // 50% drop chance
+    if (Math.random() < 0.5) {
+      showBossDrop(boss.def);
+    } else {
+      onBossDefeatedNoDrop();
+    }
+    boss = null;
+  }
+}
+
+
+function updateAllies() {
+  const p = state.player;
+  allies = allies.filter(a => {
+    a.life--;
+    if (a.life <= 0) return false;
+    // Find nearest enemy
+    let target = null, best = 9999;
+    state.enemies.forEach(e => {
+      const d = Math.hypot(e.x-a.x, e.y-a.y);
+      if (d < best) { best=d; target=e; }
+    });
+    if (target) {
+      const dx=target.x-a.x, dy=target.y-a.y, d=Math.sqrt(dx*dx+dy*dy)||1;
+      a.x += dx/d*3; a.y += dy/d*3;
+      if (d < a.r + target.r) {
+        target.hp -= 0.4;
+        particles(a.x, a.y, '#ffdd44', 2);
+        if (target.hp <= 0) {
+          particles(target.x, target.y, target.color, 8);
+          state.score += Math.round(target.score * state.wave * SCORE_MULT);
+          state.kills++;
+          state.enemies.splice(state.enemies.indexOf(target),1);
+        }
+      }
+    }
+    return true;
+  });
+}
+
+function showBossDrop(def) {
+  // Apply drop immediately
+  const drop = def.drop;
+  drop.apply();
+  recordBuff(drop);
+  state.player.hp = state.player.maxHp;
+
+  // Show inline popup for 3 seconds
+  const popup = document.getElementById('drop-popup');
+  document.getElementById('drop-popup-icon').textContent = drop.icon;
+  document.getElementById('drop-popup-title').textContent = '★ DROP OBTENU ★';
+  document.getElementById('drop-popup-title').style.color = def.color;
+  document.getElementById('drop-popup-name').textContent = drop.name;
+  document.getElementById('drop-popup-name').style.color = def.color;
+  document.getElementById('drop-popup-desc').textContent = drop.desc;
+  popup.style.borderColor = def.color;
+  popup.style.boxShadow = `0 0 30px ${def.color}40`;
+  popup.classList.remove('hidden');
+  popup.style.animation = 'none'; void popup.offsetWidth; popup.style.animation = 'popIn 0.3s ease-out';
+
+  setTimeout(() => {
+    popup.classList.add('hidden');
+    if (BOSSFIGHT_MODE) {
+      state.phase = 'dead';
+      document.getElementById('death-score').textContent = state.score.toLocaleString();
+      document.getElementById('go-wave').textContent = '⚔ BOSS VAINCU';
+      document.getElementById('go-kills').textContent = state.kills;
+      document.getElementById('go-bossfight-btn').style.display = '';
+      const sub = document.querySelector('#gameover-screen .overlay-sub');
+      if (sub) { sub.textContent = 'VICTOIRE !'; sub.style.color = 'var(--neon-purple)'; }
+      document.getElementById('gameover-screen').classList.remove('hidden');
+    } else {
+      state.wave++;
+      state.phase = 'playing';
+      startWave();
+    }
+  }, 2500);
+
+  // Keep phase as playing so game continues behind popup
+  state.enemiesToSpawn = 0;
+  state.enemies = [];
+  state.enemyBullets = [];
+}
+
+// ─── END BOSS SYSTEM ────────────────────────────────────────────
+
+function onBossDefeatedNoDrop() {
+  // Boss killed but no drop — just continue
+  state.player.hp = state.player.maxHp; // full heal regardless
+  if (BOSSFIGHT_MODE) {
+    state.phase = 'dead';
+    document.getElementById('death-score').textContent = state.score.toLocaleString();
+    document.getElementById('go-wave').textContent = '⚔ BOSS VAINCU';
+    document.getElementById('go-kills').textContent = state.kills;
+    document.getElementById('go-bossfight-btn').style.display = '';
+    const sub = document.querySelector('#gameover-screen .overlay-sub');
+    if (sub) { sub.textContent = 'VICTOIRE !'; sub.style.color = 'var(--neon-purple)'; }
+    document.getElementById('gameover-screen').classList.remove('hidden');
+  } else {
+    state.wave++;
+    state.phase = 'playing';
+    startWave();
+  }
+}
+
+// --- BUFFS ---
+const BUFF_POOL = [
+  // ── Offensifs ──
+  { id:'damage',    rare:false, icon:'⚡', name:'PUISSANCE',      desc:'+50% dégâts par tir.',                            apply: () => { state.buffs.damage += 0.5; } },
+  { id:'firerate',  rare:false, icon:'🔥', name:'CADENCE',         desc:'Cadence de tir +40% plus rapide.',                apply: () => { FIRE_RATE_BONUS += 0.4; } },
+  { id:'bulletspd', rare:false, icon:'💫', name:'VÉLOCITÉ',         desc:'Projectiles +30% plus rapides.',                  apply: () => { BULLET_SPEED_BONUS += 3.5; } },
+  { id:'bigbullet', rare:false, icon:'💥', name:'GROS CALIBRE',    desc:'Zone de touche des projectiles +40%.',             apply: () => { BIGGER_BULLETS = true; } },
+  { id:'backshot',  rare:false, icon:'🔄', name:'TIR ARRIÈRE',     desc:'Un projectile part en sens inverse à chaque tir.', apply: () => { BACK_SHOT = true; } },
+  { id:'freeze',    rare:false, icon:'❄️', name:'GEL',              desc:'25% de chance de ralentir un ennemi touché.',      apply: () => { FREEZE_CHANCE += 0.25; } },
+  { id:'piercing',  rare:true,  icon:'🎯', name:'PERFORATION',     desc:'Vos tirs traversent tous les ennemis.',            apply: () => { PIERCING = true; } },
+  { id:'triple',    rare:true,  icon:'🔱', name:'TRIPLE TIR',      desc:'3 projectiles simultanément en éventail.',         apply: () => { TRIPLE_SHOT = Math.min(3, TRIPLE_SHOT + 1); } },
+  { id:'explode',   rare:true,  icon:'💣', name:'EXPLOSION',       desc:'Chaque kill explose et blesse les proches.',       apply: () => { EXPLOSION_ON_KILL = true; } },
+  { id:'chain',     rare:true,  icon:'⚡', name:'CHAÎNE ÉCLAIR',   desc:'Chaque kill envoie un arc sur l\'ennemi le plus proche.', apply: () => { CHAIN_LIGHTNING = true; } },
+  // ── Pouvoirs ──
+  { id:'orb1',      rare:false, icon:'🌀', name:'ORBE',             desc:'+1 orbe tournant autour de vous. Inflige des dégâts continus.', apply: () => { ORB_COUNT += 1; } },
+  { id:'orb2',      rare:true,  icon:'🌌', name:'DOUBLE ORBE',     desc:'+2 orbes tournants supplémentaires.',              apply: () => { ORB_COUNT += 2; } },
+  { id:'shockwave', rare:true,  icon:'🌊', name:'ONDE DE CHOC',    desc:'Toutes les 10s, repousse et blesse les ennemis proches.', apply: () => { SHOCKWAVE = true; } },
+  { id:'bullettime',rare:true,  icon:'⏱️', name:'BULLET TIME',     desc:'Quand vous êtes en danger critique (<25% PV), les ennemis ralentissent fortement.', apply: () => { BULLET_TIME = true; } },
+  // ── Survie ──
+  { id:'maxhp',     rare:false, icon:'❤️', name:'VIE MAX',          desc:'+30 PV max. Récupère aussi 20 PV.',               apply: () => { state.buffs.maxHp+=30; state.player.maxHp+=30; state.player.hp=Math.min(state.player.hp+20,state.player.maxHp); } },
+  { id:'regen',     rare:false, icon:'🧬', name:'RÉGÉNÉRATION',    desc:'+20 PV restaurés immédiatement.',                  apply: () => { state.player.hp = Math.min(state.player.hp+20,state.player.maxHp); } },
+  { id:'pasregen',  rare:false, icon:'🩺', name:'REGEN PASSIVE',   desc:'+1 PV toutes les 3 secondes.',                    apply: () => { PASSIVE_REGEN = true; } },
+  { id:'vampire',   rare:true,  icon:'🩸', name:'VAMPIRISME',      desc:'Chaque kill redonne +1 PV (max 5). S\'accumule.',  apply: () => { VAMPIRISM = true; VAMPIRISM_STACKS = Math.min(4, VAMPIRISM_STACKS+1); } },
+  { id:'shield',    rare:false, icon:'🛡️', name:'BOUCLIER',         desc:'Absorbe intégralement le prochain coup reçu.',     apply: () => { SHIELD_ACTIVE = true; } },
+  { id:'iframes',   rare:false, icon:'👻', name:'INTANGIBILITÉ',   desc:'Durée d\'invulnérabilité +50% après un hit.',      apply: () => { I_FRAME_BONUS += 20; } },
+  // ── Mobilité & Utilitaires ──
+  { id:'speed',     rare:false, icon:'💨', name:'VITESSE',          desc:'Déplacement +20% plus rapide.',                   apply: () => { state.buffs.speed += 0.2; } },
+  { id:'turbo',     rare:false, icon:'🌪️', name:'TURBO',            desc:'Déplacement +40% plus rapide.',                   apply: () => { state.buffs.speed += 0.4; } },
+  { id:'shrink',    rare:false, icon:'🔵', name:'SILHOUETTE',       desc:'Votre hitbox réduit de 25%.',                     apply: () => { state.player.r = Math.max(5, state.player.r*0.75); } },
+  { id:'teleport',   rare:false, icon:'📍', name:'TÉLÉPORT',         desc:'Touche E : se téléporte à la position de la souris (CD 4s).', apply: () => { TELEPORT_UNLOCKED = true; } },
+  { id:'scoremult', rare:false, icon:'✨', name:'MULTIPLICATEUR',  desc:'Score par kill +50%.',                             apply: () => { SCORE_MULT += 0.5; } },
+  // ── Familier ──
+  { id:'familiar',   rare:true,  icon:'🐾', name:'FAMILIER',         desc:'Débloque l\'invocation (touche A). Max 3, 25 PV chacun, tire à distance.', apply: () => { FAMILIAR_UNLOCKED = true; } },
+  // ── Améliorations orbes ──
+  { id:'orbdmg',     rare:false, icon:'💫', name:'ORBE+ DÉGÂTS',     desc:'Vos orbes infligent +50% de dégâts.',              apply: () => { ORB_DAMAGE_MULT += 0.5; } },
+  { id:'orbspd',     rare:false, icon:'🌀', name:'ORBE+ VITESSE',    desc:'Vos orbes tournent 50% plus vite.',               apply: () => { ORB_SPEED_MULT += 0.5; } },
+  { id:'orbsize',    rare:false, icon:'🔮', name:'ORBE+ TAILLE',     desc:'Vos orbes sont plus larges (+50% rayon).',        apply: () => { ORB_SIZE_MULT += 0.5; } },
+];
+
+let FIRE_RATE_BONUS = 0, BULLET_SPEED_BONUS = 0, SCORE_MULT = 1, I_FRAME_BONUS = 0, FREEZE_CHANCE = 0;
+let PIERCING = false, TRIPLE_SHOT = 0, BIGGER_BULLETS = false, BACK_SHOT = false;
+let EXPLOSION_ON_KILL = false, CHAIN_LIGHTNING = false, VAMPIRISM = false;
+let VAMPIRISM_STACKS = 0;
+let SHIELD_ACTIVE = false, PASSIVE_REGEN = false;
+let ORB_COUNT = 0, SHOCKWAVE = false, BULLET_TIME = false;
+let ORB_DAMAGE_MULT = 1.0, ORB_SPEED_MULT = 1.0, ORB_SIZE_MULT = 1.0;
+let TELEPORT_UNLOCKED = false, TELEPORT_CD = 0, TELEPORT_CD_MAX = 240; // 4s at 60fps
+let FAMILIAR_UNLOCKED = false, FAMILIAR_CD = 0, FAMILIAR_CD_MAX = 300; // 5s
+let familiars = []; // player-controlled familiars
+
+let rerollsLeft = 3;
+
+function rerollBuffs() {
+  if (rerollsLeft <= 0) return;
+  rerollsLeft--;
+  renderBuffCards();
+}
+
+function showBuffs() {
+  rerollsLeft = 3;
+  renderBuffCards();
+  document.getElementById('buff-screen').classList.remove('hidden');
+}
+
+function renderBuffCards() {
+  // Separate rare from common; hide orb upgrades if no orbs
+  const common = BUFF_POOL.filter(b => !b.rare && !(b.id.startsWith('orb') && b.id !== 'orb1' && b.id !== 'orb2' && ORB_COUNT === 0));
+  const rare   = BUFF_POOL.filter(b => b.rare);
+  // Shuffle both pools
+  const shuffle = arr => { for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];}return arr; };
+  shuffle(common); shuffle(rare);
+  // 1 rare guaranteed, 2 commons (or 3 randoms if not enough)
+  let chosen = [];
+  if (rare.length && common.length >= 2) {
+    chosen = [rare[0], common[0], common[1]];
+    shuffle(chosen);
+  } else {
+    const all = shuffle([...BUFF_POOL]);
+    chosen = all.slice(0,3);
+  }
+
+  const container = document.getElementById('buff-cards');
+  container.innerHTML = '';
+  chosen.forEach(b => {
+    const card = document.createElement('div');
+    card.className = 'buff-card' + (b.rare ? ' rare' : '');
+    card.innerHTML = `<span class="buff-icon">${b.icon}</span><div class="buff-name">${b.name}${b.rare ? ' ★' : ''}</div><div class="buff-desc">${b.desc}</div>`;
+    card.onclick = () => {
+      b.apply();
+      recordBuff(b);
+      document.getElementById('buff-screen').classList.add('hidden');
+      state.phase = 'playing';
+      startWave();
+    };
+    container.appendChild(card);
+  });
+
+  const btn = document.getElementById('reroll-btn');
+  const cnt = document.getElementById('reroll-count');
+  btn.disabled = rerollsLeft <= 0;
+  cnt.textContent = rerollsLeft > 0 ? `${rerollsLeft} reroll${rerollsLeft>1?'s':''} disponible${rerollsLeft>1?'s':''}` : 'Aucun reroll restant';
+}
+
+// --- DRAW ---
+function draw() {
+  ctx.clearRect(0,0,W,H);
+
+  // Grid
+  ctx.strokeStyle = 'rgba(0,255,221,0.035)';
+  ctx.lineWidth = 1;
+  for (let x=0;x<W;x+=40) { ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke(); }
+  for (let y=0;y<H;y+=40) { ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke(); }
+
+  // Vignette
+  const vig = ctx.createRadialGradient(W/2,H/2,H*0.3,W/2,H/2,H*0.8);
+  vig.addColorStop(0,'transparent');
+  vig.addColorStop(1,'rgba(4,6,10,0.6)');
+  ctx.fillStyle=vig; ctx.fillRect(0,0,W,H);
+
+  if (state.phase === 'start' || state.phase === 'dead') return;
+
+
+
+  // Bullet time tint
+  if (state.timeScale && state.timeScale < 1) {
+    ctx.fillStyle = 'rgba(30,60,180,0.07)';
+    ctx.fillRect(0,0,W,H);
+  }
+
+  // Shockwave pulse visual
+  if (state.shockwavePulse > 0) {
+    const p2 = state.player;
+    ctx.strokeStyle = `rgba(0,255,221,${state.shockwavePulse * 0.7})`;
+    ctx.lineWidth = 3;
+    ctx.shadowBlur = 20; ctx.shadowColor = '#00ffdd';
+    ctx.beginPath();
+    ctx.arc(p2.x, p2.y, 150 * (1.05 - state.shockwavePulse), 0, Math.PI*2);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  // Explosion rings
+  if (state.explosions) {
+    state.explosions = state.explosions.filter(ex => {
+      ex.r += ex.maxR / ex.life * 2;
+      ex.life--;
+      if (ex.life <= 0) return false;
+      const alpha = ex.life / 20;
+      ctx.strokeStyle = `rgba(255,136,0,${alpha * 0.8})`;
+      ctx.lineWidth = 3;
+      ctx.shadowBlur = 12; ctx.shadowColor = '#ff8800';
+      ctx.beginPath(); ctx.arc(ex.x, ex.y, ex.r, 0, Math.PI*2); ctx.stroke();
+      ctx.shadowBlur = 0;
+      return true;
+    });
+  }
+
+  // Particles
+  state.particles.forEach(pt => {
+    const alpha = pt.life/pt.maxLife;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = pt.color;
+    ctx.beginPath();ctx.arc(pt.x,pt.y,pt.r,0,Math.PI*2);ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+
+  // Enemy bullets
+  state.enemyBullets.forEach(b => {
+    ctx.shadowBlur = 12; ctx.shadowColor = b.color;
+    ctx.fillStyle = b.color;
+    ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,Math.PI*2);ctx.fill();
+  });
+
+  // Player bullets
+  state.bullets.forEach(b => {
+    ctx.shadowBlur = 18; ctx.shadowColor = b.color;
+    ctx.fillStyle = b.color;
+    ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,Math.PI*2);ctx.fill();
+    ctx.globalAlpha = 0.3;
+    ctx.fillStyle=b.color;
+    ctx.beginPath();ctx.arc(b.x-b.vx*2,b.y-b.vy*2,b.r*0.7,0,Math.PI*2);ctx.fill();
+    ctx.globalAlpha=1;
+  });
+  ctx.shadowBlur = 0;
+
+  // Enemies
+  state.enemies.forEach(e => {
+    if (e.hp < e.maxHp) {
+      const bw = e.r*2.5;
+      ctx.fillStyle='rgba(0,0,0,0.6)';
+      ctx.fillRect(e.x-bw/2,e.y-e.r-10,bw,4);
+      ctx.fillStyle=e.color;
+      ctx.fillRect(e.x-bw/2,e.y-e.r-10,bw*(e.hp/e.maxHp),4);
+    }
+    // Frozen tint
+    const drawColor = (e.frozen > 0) ? '#88eeff' : e.color;
+    ctx.shadowBlur = 16; ctx.shadowColor = drawColor;
+    ctx.fillStyle = drawColor;
+    ctx.beginPath();ctx.arc(e.x,e.y,e.r,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='rgba(0,0,0,0.5)';
+    ctx.beginPath();ctx.arc(e.x,e.y,e.r*0.5,0,Math.PI*2);ctx.fill();
+  });
+  ctx.shadowBlur=0;
+
+  // Familiars (player companions)
+  familiars.forEach(f => {
+    // HP bar
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(f.x-f.r, f.y-f.r-10, f.r*2, 3);
+    ctx.fillStyle = '#ffaa00';
+    ctx.fillRect(f.x-f.r, f.y-f.r-10, f.r*2*(f.hp/f.maxHp), 3);
+    // Body
+    ctx.shadowBlur = 16; ctx.shadowColor = '#ffaa00';
+    ctx.fillStyle = '#ffaa00';
+    ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.beginPath(); ctx.arc(f.x, f.y, f.r*0.5, 0, Math.PI*2); ctx.fill();
+  });
+  ctx.shadowBlur = 0;
+
+  // Mini-allies
+  allies.forEach(a => {
+    const alpha = Math.min(1, a.life / 60);
+    ctx.globalAlpha = alpha;
+    ctx.shadowBlur = 14; ctx.shadowColor = '#ffdd44';
+    ctx.fillStyle = '#ffdd44';
+    ctx.beginPath(); ctx.arc(a.x, a.y, a.r, 0, Math.PI*2); ctx.fill();
+    ctx.globalAlpha = 1;
+  });
+  ctx.shadowBlur = 0;
+
+  // Boss
+  if (boss) {
+    // Telegraph flash
+    if (boss.telegraphing) {
+      const flash = Math.sin(Date.now()*0.03)*0.5+0.5;
+      ctx.fillStyle = `rgba(255,51,0,${flash*0.15})`;
+      ctx.fillRect(0,0,W,H);
+    }
+    // Charge trail
+    if (boss.charging) {
+      ctx.strokeStyle = `rgba(255,51,0,0.4)`;
+      ctx.lineWidth = boss.r*2;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(boss.x - boss.chargeVx*20, boss.y - boss.chargeVy*20);
+      ctx.lineTo(boss.x, boss.y);
+      ctx.stroke();
+      ctx.lineCap = 'butt';
+    }
+    // Swarm fragments
+    if (boss.fragments) {
+      boss.fragments.forEach(f => {
+        if (f.hp <= 0) return;
+        ctx.shadowBlur = 14; ctx.shadowColor = boss.color;
+        ctx.fillStyle = boss.color;
+        ctx.globalAlpha = 0.85;
+        ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, Math.PI*2); ctx.fill();
+        ctx.globalAlpha = 1;
+        // Fragment HP bar
+        if (f.hp < f.maxHp) {
+          ctx.fillStyle='rgba(0,0,0,0.5)';
+          ctx.fillRect(f.x-f.r,f.y-f.r-8,f.r*2,3);
+          ctx.fillStyle=boss.color;
+          ctx.fillRect(f.x-f.r,f.y-f.r-8,f.r*2*(f.hp/f.maxHp),3);
+        }
+      });
+    }
+    // Boss core
+    ctx.shadowBlur = 30; ctx.shadowColor = boss.color;
+    ctx.fillStyle = boss.color;
+    ctx.beginPath(); ctx.arc(boss.x, boss.y, boss.r, 0, Math.PI*2); ctx.fill();
+    // Spectre: semi-transparent when invisible
+    if (boss.visible === false) ctx.globalAlpha = 0.18;
+    ctx.shadowBlur = 30; ctx.shadowColor = boss.color;
+    ctx.fillStyle = boss.color;
+    ctx.beginPath(); ctx.arc(boss.x, boss.y, boss.r, 0, Math.PI*2); ctx.fill();
+    ctx.globalAlpha = 1;
+    // Inner core
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.beginPath(); ctx.arc(boss.x, boss.y, boss.r*0.45, 0, Math.PI*2); ctx.fill();
+    // Pulsing ring
+    ctx.strokeStyle = boss.color;
+    ctx.lineWidth = 2;
+    ctx.globalAlpha = 0.4 + Math.sin(Date.now()*0.004)*0.3;
+    ctx.beginPath(); ctx.arc(boss.x, boss.y, boss.r + 10 + Math.sin(Date.now()*0.004)*5, 0, Math.PI*2); ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+  }
+
+  // Player
+  const p = state.player;
+
+  // Orbs
+  if (ORB_COUNT > 0) {
+    const orbDrawR = 7 * ORB_SIZE_MULT;
+    for (let oi = 0; oi < ORB_COUNT; oi++) {
+      const oa = (state.orbAngle||0) + (oi / ORB_COUNT) * Math.PI * 2;
+      const ox = p.x + Math.cos(oa) * 36;
+      const oy = p.y + Math.sin(oa) * 36;
+      ctx.shadowBlur = 18; ctx.shadowColor = '#ffcc00';
+      ctx.fillStyle = '#ffcc00';
+      ctx.beginPath(); ctx.arc(ox, oy, orbDrawR, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = 'rgba(255,200,0,0.25)';
+      ctx.beginPath(); ctx.arc(ox, oy, orbDrawR*1.7, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.shadowBlur=0;
+  }
+
+  if (p.iframes % 6 < 3) {
+    if (SHIELD_ACTIVE) {
+      ctx.strokeStyle = '#aaddff';
+      ctx.lineWidth = 2.5;
+      ctx.shadowBlur = 20; ctx.shadowColor = '#aaddff';
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r+8, 0, Math.PI*2); ctx.stroke();
+      ctx.shadowBlur=0;
+    }
+    ctx.shadowBlur = 24; ctx.shadowColor = '#00ffdd';
+    ctx.strokeStyle = '#00ffdd'; ctx.lineWidth = 2;
+    ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.stroke();
+    const mx=state.mouse.x-p.x, my=state.mouse.y-p.y;
+    const len=Math.sqrt(mx*mx+my*my)||1;
+    ctx.strokeStyle='rgba(0,255,221,0.2)';
+    ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(p.x+mx/len*(p.r+5),p.y+my/len*(p.r+5));
+    ctx.lineTo(p.x+mx/len*(p.r+20),p.y+my/len*(p.r+20));ctx.stroke();
+    ctx.fillStyle='#00ffdd';
+    ctx.beginPath();ctx.arc(p.x,p.y,4,0,Math.PI*2);ctx.fill();
+  }
+  ctx.shadowBlur=0;
+}
+
+let loopId = null;
+function loop() {
+  update();
+  draw();
+  loopId = requestAnimationFrame(loop);
+}
+// ─── PRACTICE MODE ──────────────────────────────────────────────
+
+let BOSSFIGHT_MODE = false;
+let bfSelectedBoss = null;
+// tracks picks: buffId -> count
+let bfPicks = {};
+const BOSSFIGHT_MAX = 10;
+
+// All pickable buffs for practice (same pool as game)
+const BOSSFIGHT_BUFF_LIST = [
+  { id:'damage',    icon:'⚡', name:'PUISSANCE',    rare:false, apply: () => { state.buffs.damage += 0.5; } },
+  { id:'firerate',  icon:'🔥', name:'CADENCE',       rare:false, apply: () => { FIRE_RATE_BONUS += 0.4; } },
+  { id:'bulletspd', icon:'💫', name:'VÉLOCITÉ',       rare:false, apply: () => { BULLET_SPEED_BONUS += 3.5; } },
+  { id:'bigbullet', icon:'💥', name:'GROS CALIBRE',  rare:false, apply: () => { BIGGER_BULLETS = true; } },
+  { id:'backshot',  icon:'🔄', name:'TIR ARRIÈRE',   rare:false, apply: () => { BACK_SHOT = true; } },
+  { id:'freeze',    icon:'❄️', name:'GEL',            rare:false, apply: () => { FREEZE_CHANCE += 0.25; } },
+  { id:'speed',     icon:'💨', name:'VITESSE',        rare:false, apply: () => { state.buffs.speed += 0.2; } },
+  { id:'maxhp',     icon:'❤️', name:'VIE MAX',        rare:false, apply: () => { state.buffs.maxHp+=30; state.player.maxHp+=30; state.player.hp=Math.min(state.player.hp+20,state.player.maxHp); } },
+  { id:'regen',     icon:'🧬', name:'RÉGÉN. IMM.',    rare:false, apply: () => { state.player.hp = Math.min(state.player.hp+20,state.player.maxHp); } },
+  { id:'pasregen',  icon:'🩺', name:'REGEN PASSIVE',  rare:false, apply: () => { PASSIVE_REGEN = true; } },
+  { id:'shield',    icon:'🛡️', name:'BOUCLIER',       rare:false, apply: () => { SHIELD_ACTIVE = true; } },
+  { id:'iframes',   icon:'👻', name:'INTANGIB.',      rare:false, apply: () => { I_FRAME_BONUS += 20; } },
+  { id:'scoremult', icon:'✨', name:'MULTIPLIC.',     rare:false, apply: () => { SCORE_MULT += 0.5; } },
+  { id:'orbs',      icon:'🌀', name:'ORBE',           rare:false, apply: () => { ORB_COUNT += 1; } },
+  { id:'piercing',  icon:'🎯', name:'PERFORATION',    rare:true,  apply: () => { PIERCING = true; } },
+  { id:'triple',    icon:'🔱', name:'TRIPLE TIR',     rare:true,  apply: () => { TRIPLE_SHOT = Math.min(3, TRIPLE_SHOT + 1); } },
+  { id:'explode',   icon:'💣', name:'EXPLOSION',      rare:true,  apply: () => { EXPLOSION_ON_KILL = true; } },
+  { id:'chain',     icon:'⚡', name:'CHAÎNE ÉCLAIR',  rare:true,  apply: () => { CHAIN_LIGHTNING = true; } },
+  { id:'shockwave', icon:'🌊', name:'ONDE CHOC',      rare:true,  apply: () => { SHOCKWAVE = true; } },
+  { id:'bullettime',icon:'⏱️', name:'BULLET TIME',    rare:true,  apply: () => { BULLET_TIME = true; } },
+  { id:'vampire',   icon:'🩸', name:'VAMPIRISME',     rare:true,  apply: () => { VAMPIRISM = true; VAMPIRISM_STACKS = Math.min(4, VAMPIRISM_STACKS+1); } },
+  { id:'homing',    icon:'🔮', name:'ŒIL CHASSEUR',   rare:true,  apply: () => { HOMING = true; } },
+  { id:'teleport',  icon:'📍', name:'TÉLÉPORT',         rare:false, apply: () => { TELEPORT_UNLOCKED = true; } },
+  { id:'familiar',  icon:'🐾', name:'FAMILIER',         rare:true,  apply: () => { FAMILIAR_UNLOCKED = true; } },
+  { id:'orbdmg',    icon:'💫', name:'ORBE+ DÉGÂTS',    rare:false, apply: () => { ORB_DAMAGE_MULT += 0.5; } },
+  { id:'orbspd',    icon:'🌀', name:'ORBE+ VITESSE',   rare:false, apply: () => { ORB_SPEED_MULT += 0.5; } },
+  { id:'orbsize',   icon:'🔮', name:'ORBE+ TAILLE',    rare:false, apply: () => { ORB_SIZE_MULT += 0.5; } },
+];
+
+function openBossFight() {
+  bfPicks = {};
+  bfSelectedBoss = null;
+  // Hide any screens that might be visible (game over, start, etc.)
+  document.getElementById('gameover-screen').classList.add('hidden');
+  document.getElementById('start-screen').classList.add('hidden');
+  document.getElementById('bossfight-badge').classList.add('hidden');
+  // Reset game over sub text if altered by boss fight victory
+  const sub = document.querySelector('#gameover-screen .overlay-sub');
+  if (sub) { sub.textContent = 'GAME OVER'; sub.style.color = ''; }
+  document.getElementById('go-bossfight-btn').style.display = 'none';
+  document.getElementById('bossfight-screen').classList.remove('hidden');
+  renderBFBossList();
+  renderBFBuffGrid();
+}
+
+function closeBossFight() {
+  document.getElementById('bossfight-screen').classList.add('hidden');
+  document.getElementById('start-screen').classList.remove('hidden');
+}
+
+function renderBFBossList() {
+  const container = document.getElementById('bossfight-boss-list');
+  container.innerHTML = '';
+  Object.entries(BOSS_DEFS).forEach(([key, def]) => {
+    const card = document.createElement('div');
+    card.className = 'bf-boss-card' + (bfSelectedBoss === key ? ' selected' : '');
+    card.style.color = def.color;
+    card.innerHTML = `
+      <div class="bf-boss-dot" style="background:${def.color};box-shadow:0 0 8px ${def.color}"></div>
+      <div class="bf-boss-info">
+        <div class="bf-boss-name" style="color:${def.color}">${def.name}</div>
+        <div class="bf-boss-desc">${bfBossDesc(key)}</div>
+      </div>
+      <span class="bf-boss-check" style="color:${def.color}">✓</span>`;
+    card.onclick = () => { bfSelectedBoss = key; renderBFBossList(); updateBFStartBtn(); };
+    container.appendChild(card);
+  });
+}
+
+function bfBossDesc(key) {
+  const descs = {
+    titan:   'Charge en ligne droite. Lent mais dévastateur.',
+    spectre: 'Invisible, se téléporte. Spirales de projectiles.',
+    swarm:   '3 fragments orbitants qui se resserrent.',
+  };
+  return descs[key] || '';
+}
+
+function renderBFBuffGrid() {
+  const grid = document.getElementById('bossfight-buff-grid');
+  grid.innerHTML = '';
+  const total = bfPicksTotal();
+  BOSSFIGHT_BUFF_LIST.forEach(b => {
+    const count = bfPicks[b.id] || 0;
+    const maxed = total >= BOSSFIGHT_MAX && count === 0;
+    const tile = document.createElement('div');
+    tile.className = 'pbt' + (b.rare ? ' pbt-rare' : '') + (count > 0 ? ' pbt-on' : '') + (maxed ? ' pbt-disabled' : '');
+    tile.innerHTML = `
+      <span class="pbt-icon">${b.icon}</span>
+      <span class="pbt-name">${b.name}</span>
+      ${count > 0 ? `<span class="pbt-badge">×${count}</span>` : ''}`;
+    if (!maxed) {
+      tile.onclick = (e) => {
+        e.stopPropagation();
+        const cur = bfPicks[b.id] || 0;
+        const tot = bfPicksTotal();
+        if (e.shiftKey && cur > 0) {
+          // Shift+click to remove one
+          bfPicks[b.id] = cur - 1;
+          if (bfPicks[b.id] <= 0) delete bfPicks[b.id];
+        } else if (tot < BOSSFIGHT_MAX) {
+          bfPicks[b.id] = cur + 1;
+        }
+        renderBFBuffGrid();
+        updateBFCounter();
+        updateBFStartBtn();
+      };
+    }
+    grid.appendChild(tile);
+  });
+  // Add hint
+  const hint = document.createElement('div');
+  hint.style.cssText = 'grid-column:1/-1;font-size:8px;color:rgba(0,255,221,0.2);letter-spacing:1px;margin-top:6px;text-align:center';
+  hint.textContent = 'CLIC = ajouter · SHIFT+CLIC = retirer';
+  grid.appendChild(hint);
+}
+
+function bfPicksTotal() {
+  return Object.values(bfPicks).reduce((a, b) => a + b, 0);
+}
+
+function updateBFCounter() {
+  const used = bfPicksTotal();
+  const el = document.getElementById('bossfight-buff-counter');
+  el.innerHTML = `<span class="used" style="color:${used>=BOSSFIGHT_MAX?'var(--neon-orange)':'var(--neon-cyan)'}">${used}</span> <span class="total">/ ${BOSSFIGHT_MAX} SÉLECTIONNÉS</span>`;
+}
+
+function updateBFStartBtn() {
+  const btn = document.getElementById('bf-start');
+  btn.disabled = !bfSelectedBoss;
+}
+
+function startBossFight() {
+  if (!bfSelectedBoss) return;
+  BOSSFIGHT_MODE = true;
+
+  document.getElementById('bossfight-screen').classList.add('hidden');
+  document.getElementById('bossfight-badge').classList.remove('hidden');
+
+  // Init clean game state
+  state.player = { x: W/2, y: H/2, r: 12, hp: 100, maxHp: 100, iframes: 0 };
+  state.bullets = []; state.enemies = []; state.particles = [];
+  state.enemyBullets = []; state.wave = 10; state.score = 0; state.kills = 0;
+  state.phase = 'playing';
+  state.buffs = { maxHp: 100, damage: 1, speed: 1 };
+  state.shooting = false; state.shootCooldown = 0;
+  state.orbs = []; state.shockwaveTimer = 0;
+  state.regenTimer = 0; state.timeScale = 1; state.shockwavePulse = 0; state.orbAngle = 0;
+  state.enemiesToSpawn = 0;
+  acquiredBuffs = [];
+  FIRE_RATE_BONUS = 0; PIERCING = false; TRIPLE_SHOT = false;
+  BIGGER_BULLETS = false; BULLET_SPEED_BONUS = 0; EXPLOSION_ON_KILL = false;
+  VAMPIRISM = false; VAMPIRISM_STACKS = 0; SHIELD_ACTIVE = false; PASSIVE_REGEN = false;
+  I_FRAME_BONUS = 0; SCORE_MULT = 1;
+  ORB_COUNT = 0; CHAIN_LIGHTNING = false; SHOCKWAVE = false;
+  BULLET_TIME = false; FREEZE_CHANCE = 0; BACK_SHOT = false;
+  ARMOR = false; HOMING = false; MINION_SPAWN = false;
+  boss = null; allies = []; familiars = [];
+  TELEPORT_UNLOCKED = false; TELEPORT_CD = 0;
+  FAMILIAR_UNLOCKED = false; FAMILIAR_CD = 0;
+  ORB_DAMAGE_MULT = 1.0; ORB_SPEED_MULT = 1.0; ORB_SIZE_MULT = 1.0;
+
+  // Apply picked buffs (each pick count times)
+  Object.entries(bfPicks).forEach(([id, count]) => {
+    const buff = BOSSFIGHT_BUFF_LIST.find(b => b.id === id);
+    if (!buff) return;
+    for (let i = 0; i < count; i++) buff.apply();
+    // Record for pause panel display
+    for (let i = 0; i < count; i++) recordBuff(buff);
+  });
+
+  // Spawn chosen boss immediately
+  startBossWave(bfSelectedBoss);
+
+  if (loopId) cancelAnimationFrame(loopId);
+  loop();
+}
+
+function replayOrRestart() {
+  if (BOSSFIGHT_MODE) {
+    // Replay same boss with same picks — hide game over and relaunch
+    document.getElementById('gameover-screen').classList.add('hidden');
+    const sub = document.querySelector('#gameover-screen .overlay-sub');
+    if (sub) { sub.textContent = 'GAME OVER'; sub.style.color = ''; }
+    document.getElementById('go-bossfight-btn').style.display = 'none';
+    startBossFight(); // reuse same bfPicks + bfSelectedBoss
+  } else {
+    startGame();
+  }
+}
+
+function goToMenu() {
+  BOSSFIGHT_MODE = false;
+  if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
+  countingDown = false;
+  boss = null;
+  state.phase = 'start';
+  ['pause-screen','gameover-screen','buff-screen','boss-drop-screen',
+   'name-input-screen','countdown-screen','bossfight-screen','bossfight-badge'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.add('hidden');
+  });
+  document.getElementById('boss-bar-wrapper').classList.remove('visible');
+  document.getElementById('start-screen').classList.remove('hidden');
+  const sub = document.querySelector('#gameover-screen .overlay-sub');
+  if (sub) { sub.textContent = 'GAME OVER'; sub.style.color = ''; }
+  if (loopId) cancelAnimationFrame(loopId);
+  loop();
+}
+
+// ─── END PRACTICE MODE ───────────────────────────────────────────
+
+// ─── SCOREBOARD SYSTEM ──────────────────────────────────────────
+
+const SB_KEY = 'oaa_scores_v1';
+const MAX_SCORES = 10;
+
+function loadScores() {
+  try { return JSON.parse(localStorage.getItem(SB_KEY) || '[]'); }
+  catch(e) { return []; }
+}
+
+function saveScores(arr) {
+  localStorage.setItem(SB_KEY, JSON.stringify(arr));
+}
+
+function buildRunSnapshot() {
+  // Capture current run state for storage
+  return {
+    score: state.score,
+    wave: state.wave,
+    kills: state.kills,
+    date: new Date().toLocaleDateString('fr-FR'),
+    stats: {
+      maxHp: state.player ? state.player.maxHp : 100,
+      damage: state.buffs.damage.toFixed(1),
+      speed: (2.8 + (state.buffs.speed-1)*1.5).toFixed(1),
+      firerate: Math.max(3, Math.round(10/(1+FIRE_RATE_BONUS))),
+      orbs: ORB_COUNT,
+      scoreMult: SCORE_MULT.toFixed(1),
+    },
+    buffs: acquiredBuffs.map(b => ({ id:b.id, name:b.name, icon:b.icon, rare:b.rare, count:b.count })),
+    bossDrops: [
+      ARMOR       ? { id:'armor',  icon:'🦾', name:'ARMURE' }       : null,
+      HOMING      ? { id:'homing', icon:'🔮', name:'ŒIL DU CHASSEUR' } : null,
+      MINION_SPAWN? { id:'minion', icon:'🐝', name:'ÉCLAT DE NUÉE' } : null,
+    ].filter(Boolean),
+  };
+}
+
+let pendingRun = null;
+
+function showNameInput() {
+  pendingRun = buildRunSnapshot();
+  const preview = document.getElementById('name-preview');
+  preview.innerHTML = `SCORE <span>${pendingRun.score.toLocaleString()}</span> · VAGUE <span>${pendingRun.wave}</span> · KILLS <span>${pendingRun.kills}</span>`;
+  const input = document.getElementById('player-name-input');
+  // Pre-fill with last used name
+  const scores = loadScores();
+  if (scores.length > 0) {
+    const last = [...scores].sort((a,b) => b.date - a.date)[0];
+    if (last && last.name) input.value = last.name;
+  }
+  input.select();
+  document.getElementById('name-input-screen').classList.remove('hidden');
+  setTimeout(() => input.focus(), 50);
+  // Enter key submits
+  input.onkeydown = (e) => { if (e.key === 'Enter') submitScore(); };
+}
+
+function submitScore() {
+  const input = document.getElementById('player-name-input');
+  const name = (input.value.trim().toUpperCase() || 'ANONYME').slice(0, 16);
+  document.getElementById('name-input-screen').classList.add('hidden');
+
+  const run = { ...pendingRun, name, timestamp: Date.now() };
+  const scores = loadScores();
+  scores.push(run);
+  scores.sort((a,b) => b.score - a.score);
+  scores.splice(MAX_SCORES); // keep top 10
+  saveScores(scores);
+  renderScoreboard();
+
+  // Save to server
+  fetch('save_score.php', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      game: 'ONE AGAINST ALL',
+      pseudo: name,
+      score: run.score,
+      wave: run.wave,
+      kills: run.kills,
+      playtime: window._gameStartTime ? Math.round((Date.now() - window._gameStartTime) / 1000) + 's' : '—',
+      date: run.date
+    })
+  }).catch(() => {});
+
+  // Show game over screen now
+  document.getElementById('death-score').textContent = run.score.toLocaleString();
+  document.getElementById('go-wave').textContent = run.wave;
+  document.getElementById('go-kills').textContent = run.kills;
+  document.getElementById('gameover-screen').classList.remove('hidden');
+}
+
+function toggleScoreboard() {
+  document.getElementById('sb-panel').classList.toggle('open');
+  renderScoreboard();
+}
+
+function renderScoreboard() {
+  const scores = loadScores();
+  const list = document.getElementById('sb-list');
+  const empty = document.getElementById('sb-empty');
+  if (scores.length === 0) {
+    empty.style.display = 'block';
+    // Remove old entries
+    list.querySelectorAll('.sb-entry').forEach(e => e.remove());
+    return;
+  }
+  empty.style.display = 'none';
+  list.querySelectorAll('.sb-entry').forEach(e => e.remove());
+
+  const rankClass = ['gold','silver','bronze'];
+  scores.forEach((run, i) => {
+    const entry = document.createElement('div');
+    entry.className = 'sb-entry';
+    const rc = rankClass[i] || 'other';
+    entry.innerHTML = `
+      <div class="sb-rank ${rc}">${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</div>
+      <div class="sb-info">
+        <div class="sb-name">${run.name}</div>
+        <div class="sb-meta">VAGUE ${run.wave} · ${run.kills} KILLS · ${run.date}</div>
+      </div>
+      <div class="sb-score-col">
+        <div class="sb-score-val">${run.score.toLocaleString()}</div>
+      </div>
+      <button class="sb-detail-btn" title="Voir les détails" onclick="showRunDetail(${run.timestamp})">👁</button>
+    `;
+    list.appendChild(entry);
+  });
+}
+
+function clearScores() {
+  if (!confirm('Effacer tous les scores ?')) return;
+  localStorage.removeItem(SB_KEY);
+  renderScoreboard();
+}
+
+function showRunDetail(timestamp) {
+  const scores = loadScores();
+  const run = scores.find(r => r.timestamp === timestamp);
+  if (!run) return;
+
+  document.getElementById('rdm-name').textContent = run.name;
+  document.getElementById('rdm-date').textContent = run.date;
+
+  const body = document.getElementById('rdm-body');
+  const bossHtml = run.bossDrops && run.bossDrops.length > 0
+    ? run.bossDrops.map(b => `<span class="rdm-buff-tag boss-tag">${b.icon} ${b.name}</span>`).join('')
+    : '<span style="font-size:9px;color:rgba(0,255,221,0.2)">aucun</span>';
+
+  const buffsHtml = run.buffs && run.buffs.length > 0
+    ? run.buffs.map(b => `<span class="rdm-buff-tag ${b.rare?'rare-tag':''}">${b.icon} ${b.name}${b.count>1?` ×${b.count}`:''}</span>`).join('')
+    : '<span style="font-size:9px;color:rgba(0,255,221,0.2)">aucun</span>';
+
+  const s = run.stats || {};
+  body.innerHTML = `
+    <div class="rdm-score-row">
+      <div class="rdm-score-box"><div class="rdm-score-box-val">${run.score.toLocaleString()}</div><div class="rdm-score-box-label">SCORE</div></div>
+      <div class="rdm-score-box"><div class="rdm-score-box-val">${run.wave}</div><div class="rdm-score-box-label">VAGUE</div></div>
+      <div class="rdm-score-box"><div class="rdm-score-box-val">${run.kills}</div><div class="rdm-score-box-label">KILLS</div></div>
+    </div>
+    <div class="rdm-section">
+      <div class="rdm-section-title">STATISTIQUES FINALES</div>
+      <div class="rdm-stat-row"><span>VIE MAX</span><span>${s.maxHp ?? '—'}</span></div>
+      <div class="rdm-stat-row"><span>DÉGÂTS</span><span>×${s.damage ?? '—'}</span></div>
+      <div class="rdm-stat-row"><span>VITESSE</span><span>${s.speed ?? '—'}</span></div>
+      <div class="rdm-stat-row"><span>CADENCE</span><span>${s.firerate ?? '—'} ticks</span></div>
+      <div class="rdm-stat-row"><span>ORBES</span><span>${s.orbs > 0 ? s.orbs : 'aucun'}</span></div>
+      <div class="rdm-stat-row"><span>MULT. SCORE</span><span>×${s.scoreMult ?? '1.0'}</span></div>
+    </div>
+    <div class="rdm-section">
+      <div class="rdm-section-title">BOSS DROPS</div>
+      <div class="rdm-buff-list">${bossHtml}</div>
+    </div>
+    <div class="rdm-section">
+      <div class="rdm-section-title">CAPACITÉS ACQUISES</div>
+      <div class="rdm-buff-list">${buffsHtml}</div>
+    </div>
+  `;
+
+  document.getElementById('run-detail-modal').classList.remove('hidden');
+}
+
+function closeRunDetail() {
+  document.getElementById('run-detail-modal').classList.add('hidden');
+}
+
+// Close modal on outside click
+document.addEventListener('click', e => {
+  const modal = document.getElementById('run-detail-modal');
+  if (!modal.classList.contains('hidden') && !modal.contains(e.target) && !e.target.classList.contains('sb-detail-btn')) {
+    closeRunDetail();
+  }
+});
+
+// Init scoreboard on load
+renderScoreboard();
+
+// ─── END SCOREBOARD ──────────────────────────────────────────────
+</script>
+</body>
+</html>
