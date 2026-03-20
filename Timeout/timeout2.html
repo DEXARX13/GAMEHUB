@@ -640,6 +640,20 @@ body {
 .modal-row { display: flex; gap: 16px; align-items: flex-start; }
 .modal-col { flex: 1; display: flex; flex-direction: column; gap: 12px; }
 </style>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyCsfxTIrn56ab5VYKx9hzLxG8WW3Hd0hgA",
+      authDomain: "gamehub-e6aef.firebaseapp.com",
+      projectId: "gamehub-e6aef",
+      storageBucket: "gamehub-e6aef.firebasestorage.app",
+      messagingSenderId: "26866419223",
+      appId: "1:26866419223:web:ec644ea65e44d3feaffe52"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+  </script>
 </head>
 <body>
 
@@ -826,28 +840,7 @@ body {
   </div>
 </div>
 
-<script type="module">
-// ── FIREBASE ──────────────────────────────────────────────────────
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, collection, addDoc, query, orderBy, limit, getDocs, where }
-  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-
-const firebaseConfig = {
-  apiKey: "AIzaSyCsfxTIrn56ab5VYKx9hzLxG8WW3Hd0hgA",
-  authDomain: "gamehub-e6aef.firebaseapp.com",
-  projectId: "gamehub-e6aef",
-  storageBucket: "gamehub-e6aef.firebasestorage.app",
-  messagingSenderId: "26866419223",
-  appId: "1:26866419223:web:ec644ea65e44d3feaffe52"
-};
-let db = null;
-try {
-  const _app = initializeApp(firebaseConfig);
-  db = getFirestore(_app);
-} catch(e) { console.error('Firebase init failed:', e); }
-// ──────────────────────────────────────────────────────────────────
-
-
+<script>
 /* ═══════════════════════════════════════════
    CONSTANTES
 ═══════════════════════════════════════════ */
@@ -1151,54 +1144,48 @@ function lbClear() {
   renderLB(activeTab === 'hardcore');
 }
 
-async function lbAdd(pseudo, sc, ms, hc) {
-  if (db) {
-    try {
-      await addDoc(collection(db, 'scores'), {
-        game: lbKey(hc),
-        pseudo: pseudo.trim() || 'Anonyme',
-        score: sc,
-        misses: ms,
-        date: Date.now()
-      });
-    } catch(e) { console.error('Firebase save error:', e); }
-  }
+function lbAdd(pseudo, sc, ms, hc) {
+  db.collection('scores').add({
+    game: lbKey(hc),
+    pseudo: pseudo.trim() || 'Anonyme',
+    score: sc,
+    misses: ms,
+    date: Date.now()
+  }).catch(e => console.error('Firebase error:', e));
   renderLB(false); renderLB(true);
 }
 
-async function renderLB(hc) {
+function renderLB(hc) {
   const list  = hc ? lbListHardcore  : lbListNormal;
   const empty = hc ? lbEmptyHardcore : lbEmptyNormal;
   const medals = ['gold','silver','bronze'];
   const tiers  = ['top1','top2','top3'];
 
-  if (!db) { empty.style.display = 'block'; return; }
   list.innerHTML = '<li style="color:#3a4a5a;font-size:0.75rem;text-align:center;padding:0.5rem">Chargement…</li>';
-  try {
-    const q = query(
-      collection(db, 'scores'),
-      where('game', '==', lbKey(hc)),
-      orderBy('score', 'desc'),
-      limit(10)
-    );
-    const snap = await getDocs(q);
-    const data = snap.docs.map(d => d.data());
-    list.innerHTML = '';
-    if (!data.length) { empty.style.display = 'block'; return; }
-    empty.style.display = 'none';
-    data.forEach((e,i) => {
-      const li = document.createElement('li');
-      if (tiers[i]) li.classList.add(tiers[i]);
-      li.innerHTML = `
-        <span class="lb-rank ${medals[i]||''}">${i+1}</span>
-        <span class="lb-pseudo">${e.pseudo}</span>
-        <span class="lb-score">${e.score}</span>
-        <span class="lb-miss">${e.misses}✗</span>`;
-      list.appendChild(li);
+  db.collection('scores')
+    .where('game', '==', lbKey(hc))
+    .orderBy('score', 'desc')
+    .limit(10)
+    .get()
+    .then(snap => {
+      list.innerHTML = '';
+      if (snap.empty) { empty.style.display = 'block'; return; }
+      empty.style.display = 'none';
+      snap.docs.forEach((doc, i) => {
+        const e = doc.data();
+        const li = document.createElement('li');
+        if (tiers[i]) li.classList.add(tiers[i]);
+        li.innerHTML = `
+          <span class="lb-rank ${medals[i]||''}">${i+1}</span>
+          <span class="lb-pseudo">${e.pseudo}</span>
+          <span class="lb-score">${e.score}</span>
+          <span class="lb-miss">${e.misses}✗</span>`;
+        list.appendChild(li);
+      });
+    })
+    .catch(e => {
+      list.innerHTML = '<li style="color:#ff2244;font-size:0.75rem;text-align:center;padding:0.5rem">Erreur chargement</li>';
     });
-  } catch(e) {
-    list.innerHTML = '<li style="color:#ff2244;font-size:0.75rem;text-align:center;padding:0.5rem">Erreur chargement</li>';
-  }
 }
 
 /* ═══════════════════════════════════════════
