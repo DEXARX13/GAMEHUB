@@ -827,6 +827,234 @@ body {
 </div>
 
 
+<script type="module">
+
+// ── FIREBASE ──────────────────────────────────────────────────────
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, collection, addDoc, query, orderBy, limit, getDocs, where }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCsfxTIrn56ab5VYKx9hzLxG8WW3Hd0hgA",
+  authDomain: "gamehub-e6aef.firebaseapp.com",
+  projectId: "gamehub-e6aef",
+  storageBucket: "gamehub-e6aef.firebasestorage.app",
+  messagingSenderId: "26866419223",
+  appId: "1:26866419223:web:ec644ea65e44d3feaffe52"
+};
+let db = null;
+try {
+  const app = initializeApp(firebaseConfig);
+  db = getFirestore(app);
+} catch(e) { console.error('Firebase init failed:', e); }
+// ──────────────────────────────────────────────────────────────────
+
+function lbKey(hc)  { return hc ? 'timeout_hardcore' : 'timeout_normal'; }
+
+async function lbAdd(pseudo, sc, ms, hc) {
+  if (!db) { renderLB(false); renderLB(true); return; }
+  try {
+    await addDoc(collection(db, 'scores'), {
+      game: lbKey(hc),
+      pseudo: pseudo.trim() || 'Anonyme',
+      score: sc,
+      misses: ms,
+      date: Date.now()
+    });
+  } catch(e) { console.error('Firebase save error:', e); }
+  renderLB(false); renderLB(true);
+}
+
+function lbClear() {
+  // Score en ligne : pas d'effacement local, on recharge juste
+  renderLB(activeTab === 'hardcore');
+}
+
+async function renderLB(hc) {
+  const list   = hc ? lbListHardcore  : lbListNormal;
+  const empty  = hc ? lbEmptyHardcore : lbEmptyNormal;
+  const medals = ['gold','silver','bronze'];
+  const tiers  = ['top1','top2','top3'];
+
+  if (!db) { empty.style.display = 'block'; return; }
+  list.innerHTML = '<li style="color:#3a4a5a;font-size:0.75rem;text-align:center;padding:0.5rem">Chargement…</li>';
+  try {
+    const q = query(
+      collection(db, 'scores'),
+      where('game', '==', lbKey(hc)),
+      orderBy('score', 'desc'),
+      limit(10)
+    );
+    const snap = await getDocs(q);
+    const data = snap.docs.map(d => d.data());
+    list.innerHTML = '';
+    if (!data.length) { empty.style.display = 'block'; return; }
+    empty.style.display = 'none';
+    data.forEach((e,i) => {
+      const li = document.createElement('li');
+      if (tiers[i]) li.classList.add(tiers[i]);
+      li.innerHTML = `
+        <span class="lb-rank ${medals[i]||''}">${i+1}</span>
+        <span class="lb-pseudo">${e.pseudo}</span>
+        <span class="lb-score">${e.score}</span>
+        <span class="lb-miss">${e.misses}✗</span>`;
+      list.appendChild(li);
+    });
+  } catch(e) {
+    list.innerHTML = '<li style="color:#ff2244;font-size:0.75rem;text-align:center;padding:0.5rem">Erreur de chargement</li>';
+  }
+}
+
+/* ═══════════════════════════════════════════
+   JEU
+═══════════════════════════════════════════ */
+let intervalDeplacement = null, timeoutFin = null, intervalBarre = null;
+let debut = null, score = 0, misses = 0, enCours = false;
+
+function isOneHit() { return toggleOneHit.checked; }
+
+toggleOneHit.addEventListener('change', () => {
+  zone.classList.toggle('one-hit-mode', isOneHit());
+  if (!enCours) idleMsg.textContent = isOneHit() ? '☠ ONE HIT – Un miss = PERDU' : 'Appuie sur START pour jouer';
+});
+
+function positionAleatoire() {
+  return {
+    x: Math.floor(Math.random() * (zone.clientWidth  - TAILLE_CIBLE)),
+    y: Math.floor(Math.random() * (zone.clientHeight - TAILLE_CIBLE)),
+  };
+}
+
+function deplacerCible() {
+  const { x, y } = positionAleatoire();
+  cible.style.left = x + 'px';
+  cible.style.top  = y + 'px';
+  cible.classList.remove('teleport');
+  void cible.offsetWidth;
+  cible.classList.add('teleport');
+}
+
+function afficherPopup(x, y, type) {
+  const el = document.createElement('div');
+  el.className = 'popup ' + type;
+  el.textContent = type === 'hit' ? '+1' : 'MISS';
+  el.style.left = x + 'px';
+  el.style.top  = y + 'px';
+  zone.appendChild(el);
+  el.addEventListener('animationend', () => el.remove());
+}
+
+function stopperTimers() {
+  clearInterval(intervalDeplacement);
+  clearTimeout(timeoutFin);
+  clearInterval(intervalBarre);
+  intervalDeplacement = intervalBarre = timeoutFin = null;
+}
+
+function mettreAJourBarre() {
+  const ratio = Math.max(0, 1 - (Date.now() - debut) / (DUREE_MAX * 1000));
+  timerBar.style.width      = (ratio * 100) + '%';
+  timerBar.style.background = ratio > 0.5 ? 'var(--accent)' : ratio > 0.25 ? 'var(--accent2)' : 'var(--red)';
+}
+
+function finDePartie(raison) {
+  if (!enCours) return;
+  enCours = false;
+  stopperTimers();
+  cible.style.display   = 'none';
+  idleMsg.style.opacity = '1';
+  timerBar.style.width  = '0%';
+  timerBar.style.background = 'var(--red)';
+
+  if (raison === 'miss') {
+    resultEl.textContent = `☠ ONE HIT — PERDU !  Score : ${score}`;
+    resultEl.className   = 'lose';
+    idleMsg.textContent  = '☠ ONE HIT – Un miss = PERDU';
+  } else {
+    resultEl.textContent = `⏱ Temps écoulé !  Score : ${score}  •  ${misses} miss`;
+    resultEl.className   = score > 0 ? 'win' : '';
+    idleMsg.textContent  = isOneHit() ? '☠ ONE HIT – Un miss = PERDU' : 'Appuie sur START pour jouer';
+  }
+  pseudoWrap.style.display = 'flex';
+  pseudoInput.focus();
+}
+
+zone.addEventListener('click', (e) => {
+  if (!enCours || e.target === cible) return;
+  misses++;
+  missVal.textContent = misses;
+  const r = zone.getBoundingClientRect();
+  afficherPopup(e.clientX - r.left - 20, e.clientY - r.top - 20, 'miss');
+  zone.classList.remove('flash-miss');
+  void zone.offsetWidth;
+  zone.classList.add('flash-miss');
+  if (isOneHit()) finDePartie('miss');
+});
+
+cible.addEventListener('click', (e) => {
+  if (!enCours) return;
+  e.stopPropagation();
+  score++;
+  scoreVal.textContent = score;
+  const r = zone.getBoundingClientRect();
+  afficherPopup(e.clientX - r.left - 10, e.clientY - r.top - 20, 'hit');
+  clearInterval(intervalDeplacement);
+  deplacerCible();
+  intervalDeplacement = setInterval(deplacerCible, INTERVALLE);
+});
+
+function enregistrerScore() {
+  lbAdd(pseudoInput.value, score, misses, isOneHit());
+  pseudoWrap.style.display = 'none';
+  pseudoInput.value = '';
+  btnStart.disabled = false;
+
+  const targetTab = isOneHit() ? 'hardcore' : 'normal';
+  lbTabs.forEach(t  => t.classList.toggle('active',  t.dataset.tab === targetTab));
+  lbPanels.forEach(p => p.classList.toggle('active', p.id === `lb-panel-${targetTab}`));
+  activeTab = targetTab;
+}
+
+btnSave.addEventListener('click', enregistrerScore);
+pseudoInput.addEventListener('keydown', e => { if (e.key === 'Enter') enregistrerScore(); });
+
+function demarrer() {
+  score = misses = 0;
+  scoreVal.textContent = missVal.textContent = '0';
+  resultEl.textContent = '';
+  resultEl.className   = '';
+  timerBar.style.width = '100%';
+  timerBar.style.background = 'var(--accent)';
+  idleMsg.style.opacity    = '0';
+  pseudoWrap.style.display = 'none';
+  btnStart.disabled = true;
+  enCours           = true;
+
+  cible.style.display = 'block';
+  deplacerCible();
+  debut = Date.now();
+
+  intervalDeplacement = setInterval(deplacerCible, INTERVALLE);
+  timeoutFin          = setTimeout(() => finDePartie('temps'), DUREE_MAX * 1000);
+  intervalBarre       = setInterval(mettreAJourBarre, 16);
+}
+
+btnStart.addEventListener('click', demarrer);
+btnClearLb.addEventListener('click', () => {
+  const label = activeTab === 'hardcore' ? 'Hardcore' : 'Normal';
+  if (confirm(`Réinitialiser le classement ${label} ?`)) lbClear();
+});
+
+/* ═══════════════════════════════════════════
+   INIT
+═══════════════════════════════════════════ */
+loadCHConfig();
+syncUIFromConfig();
+buildCrosshair(chOverlay);
+buildCrosshair(chPreviewSvg);
+renderLB(false);
+renderLB(true);
+
 /* ═══════════════════════════════════════════
    CONSTANTES
 ═══════════════════════════════════════════ */
@@ -1124,227 +1352,7 @@ function loadCHConfig() {
 /* ═══════════════════════════════════════════
    LEADERBOARD
 ═══════════════════════════════════════════ */
-<script type="module">
-// ── FIREBASE ──────────────────────────────────────────────────────
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, collection, addDoc, query, orderBy, limit, getDocs, where }
-  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-const firebaseConfig = {
-  apiKey: "AIzaSyCsfxTIrn56ab5VYKx9hzLxG8WW3Hd0hgA",
-  authDomain: "gamehub-e6aef.firebaseapp.com",
-  projectId: "gamehub-e6aef",
-  storageBucket: "gamehub-e6aef.firebasestorage.app",
-  messagingSenderId: "26866419223",
-  appId: "1:26866419223:web:ec644ea65e44d3feaffe52"
-};
-const app = initializeApp(firebaseConfig);
-const db  = getFirestore(app);
-// ──────────────────────────────────────────────────────────────────
-
-function lbKey(hc)  { return hc ? 'timeout_hardcore' : 'timeout_normal'; }
-
-async function lbAdd(pseudo, sc, ms, hc) {
-  try {
-    await addDoc(collection(db, 'scores'), {
-      game: lbKey(hc),
-      pseudo: pseudo.trim() || 'Anonyme',
-      score: sc,
-      misses: ms,
-      date: Date.now()
-    });
-  } catch(e) { console.error('Firebase save error:', e); }
-  renderLB(false); renderLB(true);
-}
-
-function lbClear() {
-  // Score en ligne : pas d'effacement local, on recharge juste
-  renderLB(activeTab === 'hardcore');
-}
-
-async function renderLB(hc) {
-  const list   = hc ? lbListHardcore  : lbListNormal;
-  const empty  = hc ? lbEmptyHardcore : lbEmptyNormal;
-  const medals = ['gold','silver','bronze'];
-  const tiers  = ['top1','top2','top3'];
-
-  list.innerHTML = '<li style="color:#3a4a5a;font-size:0.75rem;text-align:center;padding:0.5rem">Chargement…</li>';
-  try {
-    const q = query(
-      collection(db, 'scores'),
-      where('game', '==', lbKey(hc)),
-      orderBy('score', 'desc'),
-      limit(10)
-    );
-    const snap = await getDocs(q);
-    const data = snap.docs.map(d => d.data());
-    list.innerHTML = '';
-    if (!data.length) { empty.style.display = 'block'; return; }
-    empty.style.display = 'none';
-    data.forEach((e,i) => {
-      const li = document.createElement('li');
-      if (tiers[i]) li.classList.add(tiers[i]);
-      li.innerHTML = `
-        <span class="lb-rank ${medals[i]||''}">${i+1}</span>
-        <span class="lb-pseudo">${e.pseudo}</span>
-        <span class="lb-score">${e.score}</span>
-        <span class="lb-miss">${e.misses}✗</span>`;
-      list.appendChild(li);
-    });
-  } catch(e) {
-    list.innerHTML = '<li style="color:#ff2244;font-size:0.75rem;text-align:center;padding:0.5rem">Erreur de chargement</li>';
-  }
-}
-
-/* ═══════════════════════════════════════════
-   JEU
-═══════════════════════════════════════════ */
-let intervalDeplacement = null, timeoutFin = null, intervalBarre = null;
-let debut = null, score = 0, misses = 0, enCours = false;
-
-function isOneHit() { return toggleOneHit.checked; }
-
-toggleOneHit.addEventListener('change', () => {
-  zone.classList.toggle('one-hit-mode', isOneHit());
-  if (!enCours) idleMsg.textContent = isOneHit() ? '☠ ONE HIT – Un miss = PERDU' : 'Appuie sur START pour jouer';
-});
-
-function positionAleatoire() {
-  return {
-    x: Math.floor(Math.random() * (zone.clientWidth  - TAILLE_CIBLE)),
-    y: Math.floor(Math.random() * (zone.clientHeight - TAILLE_CIBLE)),
-  };
-}
-
-function deplacerCible() {
-  const { x, y } = positionAleatoire();
-  cible.style.left = x + 'px';
-  cible.style.top  = y + 'px';
-  cible.classList.remove('teleport');
-  void cible.offsetWidth;
-  cible.classList.add('teleport');
-}
-
-function afficherPopup(x, y, type) {
-  const el = document.createElement('div');
-  el.className = 'popup ' + type;
-  el.textContent = type === 'hit' ? '+1' : 'MISS';
-  el.style.left = x + 'px';
-  el.style.top  = y + 'px';
-  zone.appendChild(el);
-  el.addEventListener('animationend', () => el.remove());
-}
-
-function stopperTimers() {
-  clearInterval(intervalDeplacement);
-  clearTimeout(timeoutFin);
-  clearInterval(intervalBarre);
-  intervalDeplacement = intervalBarre = timeoutFin = null;
-}
-
-function mettreAJourBarre() {
-  const ratio = Math.max(0, 1 - (Date.now() - debut) / (DUREE_MAX * 1000));
-  timerBar.style.width      = (ratio * 100) + '%';
-  timerBar.style.background = ratio > 0.5 ? 'var(--accent)' : ratio > 0.25 ? 'var(--accent2)' : 'var(--red)';
-}
-
-function finDePartie(raison) {
-  if (!enCours) return;
-  enCours = false;
-  stopperTimers();
-  cible.style.display   = 'none';
-  idleMsg.style.opacity = '1';
-  timerBar.style.width  = '0%';
-  timerBar.style.background = 'var(--red)';
-
-  if (raison === 'miss') {
-    resultEl.textContent = `☠ ONE HIT — PERDU !  Score : ${score}`;
-    resultEl.className   = 'lose';
-    idleMsg.textContent  = '☠ ONE HIT – Un miss = PERDU';
-  } else {
-    resultEl.textContent = `⏱ Temps écoulé !  Score : ${score}  •  ${misses} miss`;
-    resultEl.className   = score > 0 ? 'win' : '';
-    idleMsg.textContent  = isOneHit() ? '☠ ONE HIT – Un miss = PERDU' : 'Appuie sur START pour jouer';
-  }
-  pseudoWrap.style.display = 'flex';
-  pseudoInput.focus();
-}
-
-zone.addEventListener('click', (e) => {
-  if (!enCours || e.target === cible) return;
-  misses++;
-  missVal.textContent = misses;
-  const r = zone.getBoundingClientRect();
-  afficherPopup(e.clientX - r.left - 20, e.clientY - r.top - 20, 'miss');
-  zone.classList.remove('flash-miss');
-  void zone.offsetWidth;
-  zone.classList.add('flash-miss');
-  if (isOneHit()) finDePartie('miss');
-});
-
-cible.addEventListener('click', (e) => {
-  if (!enCours) return;
-  e.stopPropagation();
-  score++;
-  scoreVal.textContent = score;
-  const r = zone.getBoundingClientRect();
-  afficherPopup(e.clientX - r.left - 10, e.clientY - r.top - 20, 'hit');
-  clearInterval(intervalDeplacement);
-  deplacerCible();
-  intervalDeplacement = setInterval(deplacerCible, INTERVALLE);
-});
-
-function enregistrerScore() {
-  lbAdd(pseudoInput.value, score, misses, isOneHit());
-  pseudoWrap.style.display = 'none';
-  pseudoInput.value = '';
-  btnStart.disabled = false;
-
-  const targetTab = isOneHit() ? 'hardcore' : 'normal';
-  lbTabs.forEach(t  => t.classList.toggle('active',  t.dataset.tab === targetTab));
-  lbPanels.forEach(p => p.classList.toggle('active', p.id === `lb-panel-${targetTab}`));
-  activeTab = targetTab;
-}
-
-btnSave.addEventListener('click', enregistrerScore);
-pseudoInput.addEventListener('keydown', e => { if (e.key === 'Enter') enregistrerScore(); });
-
-function demarrer() {
-  score = misses = 0;
-  scoreVal.textContent = missVal.textContent = '0';
-  resultEl.textContent = '';
-  resultEl.className   = '';
-  timerBar.style.width = '100%';
-  timerBar.style.background = 'var(--accent)';
-  idleMsg.style.opacity    = '0';
-  pseudoWrap.style.display = 'none';
-  btnStart.disabled = true;
-  enCours           = true;
-
-  cible.style.display = 'block';
-  deplacerCible();
-  debut = Date.now();
-
-  intervalDeplacement = setInterval(deplacerCible, INTERVALLE);
-  timeoutFin          = setTimeout(() => finDePartie('temps'), DUREE_MAX * 1000);
-  intervalBarre       = setInterval(mettreAJourBarre, 16);
-}
-
-btnStart.addEventListener('click', demarrer);
-btnClearLb.addEventListener('click', () => {
-  const label = activeTab === 'hardcore' ? 'Hardcore' : 'Normal';
-  if (confirm(`Réinitialiser le classement ${label} ?`)) lbClear();
-});
-
-/* ═══════════════════════════════════════════
-   INIT
-═══════════════════════════════════════════ */
-loadCHConfig();
-syncUIFromConfig();
-buildCrosshair(chOverlay);
-buildCrosshair(chPreviewSvg);
-renderLB(false);
-renderLB(true);
 </script>
 </body>
 </html>
