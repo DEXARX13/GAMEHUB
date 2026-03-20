@@ -1285,8 +1285,11 @@ const firebaseConfig = {
   messagingSenderId: "26866419223",
   appId: "1:26866419223:web:ec644ea65e44d3feaffe52"
 };
-const _fbApp = initializeApp(firebaseConfig);
-const db = getFirestore(_fbApp);
+let db = null;
+try {
+  const _fbApp = initializeApp(firebaseConfig);
+  db = getFirestore(_fbApp);
+} catch(e) { console.error('Firebase init failed:', e); }
 
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
@@ -2884,6 +2887,7 @@ function goToMenu() {
 const MAX_SCORES = 10;
 
 async function loadScores() {
+  if (!db) return [];
   try {
     const q = query(collection(db,'oaa_scores'), orderBy('score','desc'), limit(MAX_SCORES));
     const snap = await getDocs(q);
@@ -2892,6 +2896,7 @@ async function loadScores() {
 }
 
 async function saveScoreToFirebase(run) {
+  if (!db) return;
   try {
     await addDoc(collection(db,'oaa_scores'), run);
   } catch(e) { console.error('Firebase error:', e); }
@@ -3065,6 +3070,21 @@ document.addEventListener('click', e => {
 renderScoreboard();
 
 // ─── END SCOREBOARD ──────────────────────────────────────────────
+
+// ── EXPOSE FUNCTIONS TO WINDOW (required for type="module") ──────
+window.startGame       = startGame;
+window.openBossFight   = openBossFight;
+window.replayOrRestart = replayOrRestart;
+window.goToMenu        = goToMenu;
+window.rerollBuffs     = rerollBuffs;
+window.resumeGame      = resumeGame;
+window.closeBossFight  = closeBossFight;
+window.startBossFight  = startBossFight;
+window.submitScore     = submitScore;
+window.toggleScoreboard= toggleScoreboard;
+window.clearScores     = clearScores;
+window.closeRunDetail  = closeRunDetail;
+window.showRunDetail   = showRunDetail;
 </script>
 </body>
 </html>
