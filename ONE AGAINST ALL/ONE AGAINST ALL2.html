@@ -1147,7 +1147,7 @@
     <div id="death-score">0</div>
     <div class="stat-line">VAGUE ATTEINTE : <span id="go-wave">1</span></div>
     <div class="stat-line">ENNEMIS ÉLIMINÉS : <span id="go-kills">0</span></div>
-    <button class="btn" onclick="replayOrRestart()" style="margin-top:24px">REJOUER</button>
+    <button class="btn" onclick="startGame()" style="margin-top:24px">REJOUER</button>
     <button class="btn" id="go-bossfight-btn" onclick="openBossFight()" style="display:none;margin-top:8px;border-color:rgba(204,68,255,0.5);color:rgba(204,68,255,0.8)">↺ RETENTER LE BOSS</button>
     <button class="btn" onclick="goToMenu()" style="margin-top:8px;border-color:rgba(0,255,221,0.3);color:rgba(0,255,221,0.5)">⌂ MENU PRINCIPAL</button>
   </div>
@@ -1215,20 +1215,6 @@
     </div>
   </div>
 
-  <!-- In-game drop popup -->
-  <div id="drop-popup" class="hidden">
-    <span id="drop-popup-icon">🎁</span>
-    <div id="drop-popup-title"></div>
-    <div id="drop-popup-name"></div>
-    <div id="drop-popup-desc"></div>
-  </div>
-
-  <!-- Teleport CD HUD -->
-  <div id="tp-cooldown-hud" class="hidden">📍 TÉLÉPORT : PRÊT</div>
-
-  <!-- Familiar CD HUD -->
-  <div id="familiar-hud" class="hidden">🐾 FAMILIER : PRÊT</div>
-
   <!-- Countdown screen -->
   <div id="countdown-screen" class="hidden">
     <div id="countdown-number">3</div>
@@ -1272,25 +1258,7 @@
   <div id="rdm-body"></div>
 </div>
 
-<script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, collection, addDoc, query, orderBy, limit, getDocs, where }
-  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-
-const firebaseConfig = {
-  apiKey: "AIzaSyCsfxTIrn56ab5VYKx9hzLxG8WW3Hd0hgA",
-  authDomain: "gamehub-e6aef.firebaseapp.com",
-  projectId: "gamehub-e6aef",
-  storageBucket: "gamehub-e6aef.firebasestorage.app",
-  messagingSenderId: "26866419223",
-  appId: "1:26866419223:web:ec644ea65e44d3feaffe52"
-};
-let db = null;
-try {
-  const _fbApp = initializeApp(firebaseConfig);
-  db = getFirestore(_fbApp);
-} catch(e) { console.error('Firebase init failed:', e); }
-
+<script>
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const W = 900, H = 600;
@@ -1312,21 +1280,6 @@ let state = {
 // Input
 document.addEventListener('keydown', e => {
   state.keys[e.key.toLowerCase()] = true;
-  // Teleport on E
-  if (e.key.toLowerCase() === 'e' && TELEPORT_UNLOCKED && TELEPORT_CD <= 0 && state.phase === 'playing') {
-    const p2 = state.player;
-    // Clamp to arena
-    p2.x = Math.max(p2.r+2, Math.min(W-p2.r-2, state.mouse.x));
-    p2.y = Math.max(p2.r+2, Math.min(H-p2.r-2, state.mouse.y));
-    TELEPORT_CD = TELEPORT_CD_MAX;
-    p2.iframes = Math.max(p2.iframes, 20);
-    for(let i=0;i<16;i++) particles(p2.x, p2.y, '#cc44ff', 1);
-  }
-  // Familiar summon on A
-  if (e.key.toLowerCase() === 'a' && FAMILIAR_UNLOCKED && FAMILIAR_CD <= 0 && state.phase === 'playing' && familiars.length < 3) {
-    familiars.push({ x: state.player.x, y: state.player.y, hp: 25, maxHp: 25, r: 8, shootTimer: 0, color: '#ffaa00' });
-    FAMILIAR_CD = FAMILIAR_CD_MAX;
-  }
     if (e.key === 'Escape') {
     if (!BOSSFIGHT_MODE && state.phase === 'playing') pauseGame();
     else if (!BOSSFIGHT_MODE && state.phase === 'paused' && !countingDown) resumeGame();
@@ -1480,6 +1433,8 @@ function startGame() {
   state.wave = 1;
   state.score = 0;
   state.kills = 0;
+  state.bossesKilled = [];
+  window._gameStartTime = Date.now();
   state.phase = 'playing';
   window._gameStartTime = Date.now();
   state.buffs = { maxHp: 100, damage: 1, speed: 1 };
@@ -1488,17 +1443,25 @@ function startGame() {
   state.orbs = []; state.shockwaveTimer = 0; state.bulletTimeTimer = 0;
   state.regenTimer = 0; state.timeScale = 1; state.shockwavePulse = 0; state.orbAngle = 0;
   acquiredBuffs = [];
-  FIRE_RATE_BONUS = 0; PIERCING = false; TRIPLE_SHOT = false;
+  FIRE_RATE_BONUS = 0; PIERCING = false; TRIPLE_SHOT = 0;
   BIGGER_BULLETS = false; BULLET_SPEED_BONUS = 0; EXPLOSION_ON_KILL = false;
   VAMPIRISM = false; VAMPIRISM_STACKS = 0; SHIELD_ACTIVE = false; PASSIVE_REGEN = false;
   I_FRAME_BONUS = 0; SCORE_MULT = 1;
-  ORB_COUNT = 0; CHAIN_LIGHTNING = false; SHOCKWAVE = false;
+  ORB_COUNT = 0; ORB_DAMAGE_MULT=1; ORB_SPEED_MULT=1; ORB_SIZE_MULT=1;
+  CHAIN_LIGHTNING = false; SHOCKWAVE = false;
   BULLET_TIME = false; FREEZE_CHANCE = 0; BACK_SHOT = false;
   ARMOR = false; HOMING = false; MINION_SPAWN = false;
   boss = null; allies = []; familiars = [];
-  TELEPORT_UNLOCKED = false; TELEPORT_CD = 0;
-  FAMILIAR_UNLOCKED = false; FAMILIAR_CD = 0;
-  ORB_DAMAGE_MULT = 1.0; ORB_SPEED_MULT = 1.0; ORB_SIZE_MULT = 1.0;
+  RESURRECTION = false; WEB_TRAIL=false; FRACTURE=false;
+  SURCHAUFFE=false; surchauffeLevel=0; surchauffeTimer=0;
+  DARK_VISION=false; CLONE_ACTIVE=false; CLONE_TIMER=0;
+  SHIELD_STACKS=0; BIGGER_BULLETS_BONUS=4;
+  EXPLOSION_LEVEL=0; CHAIN_LEVEL=0;
+  LIFE_STEALER=false; lifeStealerTimer=0;
+  SURGE_UNLOCKED=false; SURGE_CHARGE=0;
+  TELEPORT_UNLOCKED=false; TELEPORT_CD=0;
+  FAMILIAR_UNLOCKED=false; FAMILIAR_CD=0; familiars=[];
+  TRIPLE_SHOT=0;
   document.getElementById('boss-bar-wrapper').classList.remove('visible');
   document.getElementById('boss-drop-screen').classList.add('hidden');
   startWave();
@@ -1566,7 +1529,8 @@ function particles(x, y, color, n=6) {
 function update() {
   if (state.phase !== 'playing') return;
   const p = state.player;
-  const spd = (2.8 + (state.buffs.speed-1)*1.5);
+  const spd = (2.8 + (state.buffs.speed-1)*1.5) * (p._webSlow > 0 ? 0.4 : 1);
+  if (p._webSlow > 0) p._webSlow--;
 
   // Move player
   let dx=0, dy=0;
@@ -1582,15 +1546,14 @@ function update() {
   const baseCooldown = Math.max(3, Math.round(10 / (1 + FIRE_RATE_BONUS)));
   if (state.shooting && state.shootCooldown <= 0) {
     const bColor = TRIPLE_SHOT > 0 ? '#ffdd00' : (PIERCING ? '#ff44ff' : (FREEZE_CHANCE > 0 ? '#88eeff' : '#00ffdd'));
-    fireBullet(p, state.mouse, 12 + BULLET_SPEED_BONUS, state.buffs.damage, bColor, 'player');
+    const surchauffeMult = SURCHAUFFE ? Math.min(3, 1 + surchauffeLevel*0.1) : 1;
+    fireBullet(p, state.mouse, 12 + BULLET_SPEED_BONUS, state.buffs.damage * surchauffeMult, bColor, 'player');
     if (TRIPLE_SHOT > 0) {
       const ang = Math.atan2(state.mouse.y-p.y, state.mouse.x-p.x);
-      // Each stack adds 2 more bullets with increasing spread
-      for (let ts = 1; ts <= TRIPLE_SHOT; ts++) {
-        const spread = 0.18 * ts;
-        fireBullet(p, {x:p.x+Math.cos(ang+spread)*100,y:p.y+Math.sin(ang+spread)*100}, 12+BULLET_SPEED_BONUS, state.buffs.damage*0.8, bColor, 'player');
-        fireBullet(p, {x:p.x+Math.cos(ang-spread)*100,y:p.y+Math.sin(ang-spread)*100}, 12+BULLET_SPEED_BONUS, state.buffs.damage*0.8, bColor, 'player');
-      }
+      const spread = 0.25;
+      [{a:ang+spread},{a:ang-spread}].forEach(({a}) => {
+        fireBullet(p, {x:p.x+Math.cos(a)*100,y:p.y+Math.sin(a)*100}, 12+BULLET_SPEED_BONUS, state.buffs.damage*0.8, bColor, 'player');
+      });
     }
     if (BACK_SHOT) {
       // Shoot in opposite direction
@@ -1601,12 +1564,19 @@ function update() {
     particles(p.x, p.y, bColor, 3);
   }
   if (state.shootCooldown > 0) state.shootCooldown--;
+  if (SURCHAUFFE) {
+    if (state.shooting) {
+      surchauffeTimer++;
+      if (surchauffeTimer >= 60) { surchauffeTimer=0; surchauffeLevel=Math.min(20,surchauffeLevel+1); }
+    } else {
+      surchauffeLevel = Math.max(0, surchauffeLevel-2);
+    }
+  }
 
   // Orbs update — orbit around player
   if (ORB_COUNT > 0) {
-    state.orbAngle = (state.orbAngle || 0) + 0.04 * ORB_SPEED_MULT;
-    const orbR = 7 * ORB_SIZE_MULT;
-    const orbDmg = 0.3 * ORB_DAMAGE_MULT;
+    state.orbAngle = (state.orbAngle || 0) + 0.04;
+    // Check orb collision with enemies
     for (let oi = 0; oi < ORB_COUNT; oi++) {
       const oa = state.orbAngle + (oi / ORB_COUNT) * Math.PI * 2;
       const ox = p.x + Math.cos(oa) * 36;
@@ -1614,14 +1584,14 @@ function update() {
       for (let ei = state.enemies.length-1; ei >= 0; ei--) {
         const e = state.enemies[ei];
         const ddx=ox-e.x, ddy=oy-e.y;
-        if (Math.sqrt(ddx*ddx+ddy*ddy) < e.r + orbR) {
-          e.hp -= orbDmg;
+        if (Math.sqrt(ddx*ddx+ddy*ddy) < e.r + 7) {
+          e.hp -= 0.3;
           particles(ox, oy, '#ffcc00', 2);
           if (e.hp <= 0) {
             particles(e.x, e.y, e.color, 12);
             state.score += Math.round(e.score * state.wave * SCORE_MULT);
             state.kills++;
-            if (VAMPIRISM) p.hp = Math.min(p.maxHp, p.hp + Math.min(5, 1+VAMPIRISM_STACKS));
+            if (VAMPIRISM) p.hp = Math.min(p.maxHp, p.hp + 3);
             state.enemies.splice(ei, 1);
           }
         }
@@ -1705,8 +1675,8 @@ function update() {
     const b = state.bullets[bi];
     b.x += b.vx; b.y += b.vy; b.life--;
     if (b.life <= 0 || b.x<0||b.x>W||b.y<0||b.y>H) { state.bullets.splice(bi,1); continue; }
-    let hitAny = false;
-    // Track already-hit enemies this frame for piercing (avoid double-hit same enemy)
+    if (b._noFracture) { /* skip fracture for split bullets */ }
+    let hit = false;
     for (let ei = state.enemies.length-1; ei >= 0; ei--) {
       const e = state.enemies[ei];
       const dx2=b.x-e.x, dy2=b.y-e.y;
@@ -1714,68 +1684,61 @@ function update() {
       if (Math.sqrt(dx2*dx2+dy2*dy2) < hitR) {
         e.hp -= b.damage;
         particles(b.x, b.y, e.color, 5);
-        hitAny = true;
-        // Freeze chance (capped at 75%)
-        if (FREEZE_CHANCE > 0 && Math.random() < Math.min(0.75, FREEZE_CHANCE)) {
+        // Berserk rage mechanic
+        if (boss && boss.rage !== undefined) {
+          boss.rage = Math.min(100, boss.rage + 8);
+          boss.lastDmgTimer = 0;
+        }
+        // Freeze chance
+        if (FREEZE_CHANCE > 0 && Math.random() < FREEZE_CHANCE) {
           e.frozen = (e.frozen||0) + 90;
           particles(e.x, e.y, '#88eeff', 6);
         }
+        if (!PIERCING) hit = true;
         if (e.hp <= 0) {
-          const ex = e.x, ey = e.y; // store pos before splice
-          // EXPLOSION — large visible burst
           if (EXPLOSION_ON_KILL) {
-            const expR = 90;
-            for (let ni = state.enemies.length-1; ni >= 0; ni--) {
-              if (ni === ei) continue;
-              const ne = state.enemies[ni];
-              const ddx=ne.x-ex, ddy=ne.y-ey;
-              if (Math.sqrt(ddx*ddx+ddy*ddy) < expR) {
-                ne.hp -= b.damage * 1.2;
+            state.enemies.forEach((ne, ni) => {
+              if (ni !== ei) {
+                const ddx=ne.x-e.x, ddy=ne.y-e.y;
+                if (Math.sqrt(ddx*ddx+ddy*ddy) < 60) ne.hp -= b.damage * 0.5;
               }
-            }
-            // Big explosion visual
-            for (let k=0;k<30;k++) particles(ex + (Math.random()-0.5)*expR, ey + (Math.random()-0.5)*expR, '#ff8800', 1);
-            for (let k=0;k<15;k++) particles(ex, ey, '#ffdd00', 1);
-            // Store explosion ring for draw
-            state.explosions = state.explosions || [];
-            state.explosions.push({ x:ex, y:ey, r:0, maxR:expR, life:20 });
+            });
+            for(let k=0;k<20;k++) particles(e.x, e.y, '#ff8800', 1);
           }
-          // CHAIN LIGHTNING — arc to nearest, can chain kill
+          // Chain lightning
           if (CHAIN_LIGHTNING) {
             let closest = null, closestDist = 999;
-            for (let ni = state.enemies.length-1; ni >= 0; ni--) {
-              if (ni === ei) continue;
-              const ne = state.enemies[ni];
-              const d = Math.hypot(ne.x-ex, ne.y-ey);
-              if (d < closestDist) { closestDist=d; closest=ne; }
-            }
-            if (closest && closestDist < 220) {
-              closest.hp -= b.damage * 1.5;
-              // Bright lightning arc
-              for (let s=0;s<12;s++) {
-                const t=s/12;
-                const lx=ex+(closest.x-ex)*t+(Math.random()-0.5)*28;
-                const ly=ey+(closest.y-ey)*t+(Math.random()-0.5)*28;
-                particles(lx, ly, '#ffff44', 1);
+            state.enemies.forEach((ne, ni) => {
+              if (ni !== ei) {
+                const ddx=ne.x-e.x, ddy=ne.y-e.y;
+                const d=Math.sqrt(ddx*ddx+ddy*ddy);
+                if (d < closestDist) { closestDist=d; closest=ne; }
               }
-              particles(closest.x, closest.y, '#ffff44', 6);
+            });
+            if (closest && closestDist < 180) {
+              closest.hp -= b.damage;
+              // Draw lightning arc as particles
+              for (let s=0;s<8;s++) {
+                const t=s/8;
+                const lx=e.x+(closest.x-e.x)*t+(Math.random()-0.5)*20;
+                const ly=e.y+(closest.y-e.y)*t+(Math.random()-0.5)*20;
+                particles(lx, ly, '#ffff88', 1);
+              }
             }
           }
-          particles(ex, ey, e.color, 14);
+          particles(e.x, e.y, e.color, 12);
           state.score += Math.round(e.score * state.wave * SCORE_MULT);
           state.kills++;
-          // VAMPIRISM — capped at +5 PV per kill regardless of stacks
-          if (VAMPIRISM) p.hp = Math.min(p.maxHp, p.hp + Math.min(5, 1 + VAMPIRISM_STACKS));
+          if (VAMPIRISM) p.hp = Math.min(p.maxHp, p.hp + 3);
           if (MINION_SPAWN && Math.random() < 0.2) {
-            allies.push({ x: ex, y: ey, r: 7, life: 300, color: '#ffdd44' });
+            allies.push({ x: e.x, y: e.y, r: 7, life: 300, color: '#ffdd44' });
           }
           state.enemies.splice(ei,1);
         }
-        // PIERCING: don't stop bullet, but don't re-hit same frame handled by loop direction
-        if (!PIERCING) break;
+        if (hit) break;
       }
     }
-    if (hitAny && !PIERCING) state.bullets.splice(bi,1);
+    if (hit) state.bullets.splice(bi,1);
   }
 
   // Enemy bullets vs player
@@ -1805,6 +1768,25 @@ function update() {
     if (pt.life<=0) state.particles.splice(i,1);
   }
 
+  // Life Stealer zone
+  if (LIFE_STEALER) {
+    lifeStealerTimer++;
+    if (lifeStealerTimer >= 120) {
+      lifeStealerTimer=0;
+      const stealR=140; let count=0;
+      state.enemies.forEach(e=>{ if(Math.hypot(e.x-p.x,e.y-p.y)<stealR) count++; });
+      if(boss && Math.hypot(boss.x-p.x,boss.y-p.y)<stealR) count++;
+      if(count>0){ p.hp=Math.min(p.maxHp,p.hp+count); particles(p.x,p.y,'#aa44ff',Math.min(count*2,12)); state.lifeStealPulse=1; }
+    }
+  }
+  if(state.lifeStealPulse>0) state.lifeStealPulse-=0.05;
+
+  // Clone: ghost that mirrors player shots
+  if (CLONE_ACTIVE) {
+    CLONE_TIMER--;
+    if (CLONE_TIMER <= 0) CLONE_ACTIVE=false;
+  }
+
   // Passive regen tick
   if (PASSIVE_REGEN && state.kills > 0) {
     state.regenTimer = (state.regenTimer||0) + 1;
@@ -1814,51 +1796,8 @@ function update() {
   // Update boss
   if (boss) updateBoss();
 
-  // Update allies (minion spawn)
+  // Update allies
   if (allies.length > 0) updateAllies();
-
-  // Update familiars
-  updateFamiliars();
-
-  // Tick teleport + familiar CDs
-  if (TELEPORT_CD > 0) {
-    TELEPORT_CD--;
-    const tpEl = document.getElementById('tp-cooldown-hud');
-    if (tpEl) {
-      tpEl.classList.remove('hidden');
-      if (TELEPORT_CD > 0) {
-        tpEl.textContent = `📍 TÉLÉPORT : ${(TELEPORT_CD/60).toFixed(1)}s`;
-        tpEl.style.color = 'rgba(204,68,255,0.5)';
-      } else {
-        tpEl.textContent = '📍 TÉLÉPORT : PRÊT';
-        tpEl.style.color = 'rgba(204,68,255,0.9)';
-      }
-    }
-  } else if (TELEPORT_UNLOCKED) {
-    const tpEl = document.getElementById('tp-cooldown-hud');
-    if (tpEl) { tpEl.classList.remove('hidden'); tpEl.textContent = '📍 TÉLÉPORT : PRÊT'; tpEl.style.color = 'rgba(204,68,255,0.9)'; }
-  } else {
-    document.getElementById('tp-cooldown-hud')?.classList.add('hidden');
-  }
-  if (FAMILIAR_CD > 0) {
-    FAMILIAR_CD--;
-    const fEl = document.getElementById('familiar-hud');
-    if (fEl) {
-      fEl.classList.remove('hidden');
-      if (FAMILIAR_CD > 0) {
-        fEl.textContent = `🐾 FAMILIER : ${(FAMILIAR_CD/60).toFixed(1)}s (${familiars.length}/3)`;
-        fEl.style.color = 'rgba(255,170,0,0.5)';
-      } else {
-        fEl.textContent = `🐾 FAMILIER : PRÊT (${familiars.length}/3)`;
-        fEl.style.color = 'rgba(255,170,0,0.9)';
-      }
-    }
-  } else if (FAMILIAR_UNLOCKED) {
-    const fEl = document.getElementById('familiar-hud');
-    if (fEl) { fEl.classList.remove('hidden'); fEl.textContent = `🐾 FAMILIER : PRÊT (${familiars.length}/3)`; fEl.style.color = 'rgba(255,170,0,0.9)'; }
-  } else {
-    document.getElementById('familiar-hud')?.classList.add('hidden');
-  }
 
   // HOMING on regular bullets toward nearest enemy (non-boss)
   if (HOMING && !boss) {
@@ -1872,6 +1811,14 @@ function update() {
         if(spd>ms){b.vx=b.vx/spd*ms;b.vy=b.vy/spd*ms;}
       }
     });
+  }
+
+  // Resurrection: absorb one death
+  if (p.hp <= 0 && RESURRECTION) {
+    RESURRECTION = false;
+    p.hp = 30; p.iframes = 120;
+    for(let i=0;i<20;i++) particles(p.x,p.y,'#ffdd88',1);
+    state.resurrectionFlash = 30;
   }
 
   // Death
@@ -2024,29 +1971,24 @@ const BOSS_DEFS = {
     },
     initAI: (b) => {
       b.orbitAngle = 0; b.fragments = [];
-      for(let i=0;i<3;i++) b.fragments.push({ angle: (i/3)*Math.PI*2, dist:80, r:12, hp:15, maxHp:15, respawnTimer:0 });
+      // 3 orbiting fragments
+      for(let i=0;i<3;i++) b.fragments.push({ angle: (i/3)*Math.PI*2, dist:80, r:12, hp:15, maxHp:15 });
       b.shootTimer = 0;
     },
     updateAI: (b, p) => {
+      // Core drifts toward player
       const dx=p.x-b.x, dy=p.y-b.y, d=Math.sqrt(dx*dx+dy*dy)||1;
       b.x += dx/d*b.speed*0.5; b.y += dy/d*b.speed*0.5;
       b.orbitAngle += 0.022;
+      // Fragments orbit and close in
       const closeFactor = Math.max(0.3, 1 - (1 - b.hp/b.maxHp)*0.6);
       b.fragments.forEach((f, fi) => {
-        if (f.hp <= 0) {
-          // Respawn after 8s
-          f.respawnTimer = (f.respawnTimer||0) + 1;
-          if (f.respawnTimer >= 480) {
-            f.hp = f.maxHp; f.respawnTimer = 0; f.dist = 80;
-            particles(b.x + Math.cos(f.angle)*60, b.y + Math.sin(f.angle)*60, b.color, 10);
-          }
-          return;
-        }
         f.angle = b.orbitAngle + (fi/3)*Math.PI*2;
-        f.dist = Math.max(30, f.dist * 0.998);
+        f.dist = Math.max(30, f.dist * 0.998); // slowly close in
         f.x = b.x + Math.cos(f.angle)*f.dist*closeFactor;
         f.y = b.y + Math.sin(f.angle)*f.dist*closeFactor;
       });
+      // Burst shoot from each fragment
       b.shootTimer++;
       if (b.shootTimer >= 90) {
         b.shootTimer = 0;
@@ -2054,8 +1996,262 @@ const BOSS_DEFS = {
           if (f.hp <= 0) return;
           const dx2=p.x-f.x, dy2=p.y-f.y, d2=Math.sqrt(dx2*dx2+dy2*dy2)||1;
           state.enemyBullets.push({ x:f.x, y:f.y, vx:dx2/d2*4, vy:dy2/d2*4,
-            r:4, damage:Math.round(8*(b.dmgMult||1)), color:b.color, life:80, owner:'enemy' });
+            r:4, damage:8, color:b.color, life:80, owner:'enemy' });
         });
+      }
+    }
+  }
+,
+
+  // ─── ARAIGNÉE ────────────────────────────────────────────────
+  araignee: {
+    name: "L'ARAIGNÉE",
+    color: '#aa44ff',
+    r: 20,
+    hpBase: 110,
+    speed: 2.0,
+    intro: { label: '⚠ BOSS ⚠', color: '#aa44ff' },
+    drop: { id:'web', icon:'🕸️', name:'FILET', desc:'Vos orbes laissent une traîne qui ralentit les ennemis.', rare:true,
+      apply: () => { WEB_TRAIL = true; } },
+    initAI: (b) => {
+      b.webTimer = 0; b.webs = []; b.jumpTimer = 180;
+      b.jumping = false; b.jumpVx = 0; b.jumpVy = 0; b.jumpLife = 0;
+    },
+    updateAI: (b, p) => {
+      b.webTimer++;
+      if (b.webTimer >= 80) {
+        b.webTimer = 0;
+        b.webs.push({ x: b.x, y: b.y, r: 45, life: 400 });
+      }
+      b.webs = b.webs.filter(w => {
+        w.life--;
+        if (Math.hypot(p.x-w.x, p.y-w.y) < w.r) p._webSlow = 15;
+        return w.life > 0;
+      });
+      if (b.jumping) {
+        b.x += b.jumpVx * 7; b.y += b.jumpVy * 7;
+        b.x=Math.max(b.r,Math.min(W-b.r,b.x)); b.y=Math.max(b.r,Math.min(H-b.r,b.y));
+        b.jumpLife--;
+        if (b.jumpLife <= 0) { b.jumping=false; b.jumpTimer=120; }
+      } else {
+        b.jumpTimer--;
+        const dx=p.x-b.x, dy=p.y-b.y, d=Math.sqrt(dx*dx+dy*dy)||1;
+        b.x+=dx/d*b.speed; b.y+=dy/d*b.speed;
+        if (b.jumpTimer <= 0) {
+          b.jumping=true; b.jumpVx=dx/d; b.jumpVy=dy/d; b.jumpLife=20;
+          particles(b.x, b.y, b.color, 8);
+        }
+      }
+    }
+  },
+
+  // ─── CONDUCTEUR ──────────────────────────────────────────────
+  conducteur: {
+    name: 'LE CONDUCTEUR',
+    color: '#ffee00',
+    r: 18,
+    hpBase: 95,
+    speed: 1.6,
+    intro: { label: '⚠ BOSS ⚠', color: '#ffee00' },
+    drop: { id:'surge', icon:'⚡', name:'DÉCHARGE', desc:'Kills chargent un super-tir (×3 dégâts au max).', rare:true,
+      apply: () => { SURGE_UNLOCKED=true; } },
+    initAI: (b) => { b.pylons=[]; b.pylonTimer=120; b.arcTimer=0; },
+    updateAI: (b, p) => {
+      const dx=p.x-b.x, dy=p.y-b.y, d=Math.sqrt(dx*dx+dy*dy)||1;
+      b.x+=dx/d*b.speed; b.y+=dy/d*b.speed;
+      b.pylonTimer--;
+      if (b.pylonTimer<=0 && b.pylons.length<5) {
+        b.pylonTimer=150;
+        const a=Math.random()*Math.PI*2, dist=80+Math.random()*120;
+        b.pylons.push({x:Math.max(20,Math.min(W-20,W/2+Math.cos(a)*dist)),y:Math.max(20,Math.min(H-20,H/2+Math.sin(a)*dist)),r:8,hp:12,maxHp:12});
+        particles(b.pylons[b.pylons.length-1].x,b.pylons[b.pylons.length-1].y,'#ffee00',10);
+      }
+      b.pylons=b.pylons.filter(pl=>pl.hp>0);
+      b.arcTimer++;
+      if (b.arcTimer>=30) {
+        b.arcTimer=0;
+        for(let i=0;i<b.pylons.length;i++){
+          for(let j=i+1;j<b.pylons.length;j++){
+            const pa=b.pylons[i], pb=b.pylons[j];
+            const arcDist=Math.hypot(pa.x-pb.x,pa.y-pb.y);
+            if(arcDist<220){
+              const t2=Math.max(0,Math.min(1,((p.x-pa.x)*(pb.x-pa.x)+(p.y-pa.y)*(pb.y-pa.y))/(arcDist*arcDist)));
+              const cx=pa.x+(pb.x-pa.x)*t2, cy=pa.y+(pb.y-pa.y)*t2;
+              if(Math.hypot(p.x-cx,p.y-cy)<18 && p.iframes<=0){
+                p.hp-=Math.round((ARMOR?5:8)*(b.dmgMult||1)); p.iframes=25;
+                particles(p.x,p.y,'#ffee00',6);
+              }
+              for(let s=0;s<5;s++) particles(pa.x+(pb.x-pa.x)*(s/5)+(Math.random()-0.5)*15,pa.y+(pb.y-pa.y)*(s/5)+(Math.random()-0.5)*15,'#ffee00',1);
+            }
+          }
+        }
+      }
+    }
+  },
+
+  // ─── LÉVIATHAN ───────────────────────────────────────────────
+  leviathan: {
+    name: 'LE LÉVIATHAN',
+    color: '#0088ff',
+    r: 40,
+    hpBase: 200,
+    speed: 0.5,
+    intro: { label: '⚠ BOSS ⚠', color: '#0088ff' },
+    drop: { id:'fracture', icon:'💠', name:'FRACTURE', desc:'Balles se divisent en 3 à l\'impact.', rare:true,
+      apply: () => { FRACTURE=true; } },
+    initAI: (b) => { b.waveTimer=0; b.splitDone=false; b.shockwaves=[]; },
+    updateAI: (b, p) => {
+      const dx=p.x-b.x, dy=p.y-b.y, d=Math.sqrt(dx*dx+dy*dy)||1;
+      b.x+=dx/d*b.speed; b.y+=dy/d*b.speed;
+      b.x=Math.max(b.r,Math.min(W-b.r,b.x)); b.y=Math.max(b.r,Math.min(H-b.r,b.y));
+      b.waveTimer++;
+      if(b.waveTimer>=120){ b.waveTimer=0; b.shockwaves.push({x:b.x,y:b.y,r:0,maxR:300,life:75}); }
+      b.shockwaves=b.shockwaves.filter(sw=>{
+        sw.r+=4; sw.life--;
+        if(Math.abs(Math.hypot(p.x-sw.x,p.y-sw.y)-sw.r)<22 && p.iframes<=0){
+          p.hp-=Math.round((ARMOR?8:12)*(b.dmgMult||1)); p.iframes=30; particles(p.x,p.y,'#0088ff',8);
+        }
+        return sw.life>0;
+      });
+      if(!b.splitDone && b.hp<b.maxHp*0.5){
+        b.splitDone=true;
+        const tier=Math.floor(state.wave/10);
+        for(let i=0;i<2;i++){
+          const a=(i/2)*Math.PI*2;
+          state.enemies.push({x:b.x+Math.cos(a)*60,y:b.y+Math.sin(a)*60,r:18,
+            hp:Math.round(b.maxHp*0.2),maxHp:Math.round(b.maxHp*0.2),speed:2.2,
+            color:'#0055aa',score:50,type:'fast',dmgMult:b.dmgMult||1});
+        }
+        particles(b.x,b.y,'#0088ff',30);
+      }
+    }
+  },
+
+  // ─── BERSERK ─────────────────────────────────────────────────
+  berserk: {
+    name: 'LE BERSERK',
+    color: '#ff4400',
+    r: 26,
+    hpBase: 150,
+    speed: 1.0,
+    intro: { label: '⚠ BOSS ⚠', color: '#ff4400' },
+    drop: { id:'surchauffe', icon:'🔥', name:'SURCHAUFFE', desc:'Dégâts +10%/s de tir continu (max ×3).', rare:true,
+      apply: () => { SURCHAUFFE=true; } },
+    initAI: (b) => { b.rage=0; b.lastDmgTimer=0; b.spinTimer=0; b.spinAngle=0; },
+    updateAI: (b, p) => {
+      b.lastDmgTimer++;
+      if(b.lastDmgTimer>60) b.rage=Math.max(0,b.rage-0.3);
+      const rageMult=1+(b.rage/100)*2.5;
+      const dx=p.x-b.x, dy=p.y-b.y, d=Math.sqrt(dx*dx+dy*dy)||1;
+      b.x+=dx/d*b.speed*rageMult; b.y+=dy/d*b.speed*rageMult;
+      b.x=Math.max(b.r,Math.min(W-b.r,b.x)); b.y=Math.max(b.r,Math.min(H-b.r,b.y));
+      if(b.rage>60){
+        b.spinTimer++;
+        if(b.spinTimer>=20){
+          b.spinTimer=0; b.spinAngle+=0.8;
+          for(let i=0;i<3;i++){
+            const a=b.spinAngle+(i/3)*Math.PI*2;
+            state.enemyBullets.push({x:b.x,y:b.y,vx:Math.cos(a)*5,vy:Math.sin(a)*5,r:5,
+              damage:Math.round(12*(b.dmgMult||1)),color:'#ff4400',life:70,owner:'enemy'});
+          }
+        }
+      }
+    }
+  },
+
+  // ─── ÉCLIPSE ─────────────────────────────────────────────────
+  eclipse: {
+    name: "L'ÉCLIPSE",
+    color: '#9900cc',
+    r: 24,
+    hpBase: 130,
+    speed: 1.4,
+    intro: { label: '⚠ BOSS ⚠', color: '#9900cc' },
+    drop: { id:'darkvision', icon:'🌑', name:'VISION NOCTURNE', desc:'Vous voyez dans l\'obscurité totale.', rare:true,
+      apply: () => { DARK_VISION=true; } },
+    initAI: (b) => { b.darkTimer=0; b.darkness=0; b.shootTimer=0; b.darkPhase=false; },
+    updateAI: (b, p) => {
+      const dx=p.x-b.x, dy=p.y-b.y, d=Math.sqrt(dx*dx+dy*dy)||1;
+      b.x+=dx/d*b.speed; b.y+=dy/d*b.speed;
+      b.darkTimer++;
+      if(b.darkTimer>=300){ b.darkPhase=!b.darkPhase; b.darkTimer=0; }
+      b.darkness = b.darkPhase ? Math.min(0.92,b.darkness+0.01) : Math.max(0,b.darkness-0.015);
+      state.eclipseDarkness = b.darkness;
+      if(b.darkPhase){
+        b.shootTimer++;
+        if(b.shootTimer>=40){
+          b.shootTimer=0;
+          for(let i=0;i<6;i++){
+            const a=(i/6)*Math.PI*2+b.darkTimer*0.05;
+            state.enemyBullets.push({x:b.x,y:b.y,vx:Math.cos(a)*4,vy:Math.sin(a)*4,r:5,
+              damage:Math.round(10*(b.dmgMult||1)),color:'#9900cc',life:90,owner:'enemy'});
+          }
+        }
+      }
+    }
+  },
+
+  // ─── NÉCROMANT (fixe vague 50) ───────────────────────────────
+  necromant: {
+    name: 'LE NÉCROMANT',
+    color: '#44ff88',
+    r: 22,
+    hpBase: 180,
+    speed: 0.8,
+    intro: { label: '⚠ BOSS SPÉCIAL · VAGUE 50 ⚠', color: '#44ff88' },
+    drop: { id:'resurrection', icon:'💚', name:'RÉSURRECTION', desc:'Absorbe une mort, puis se désactive.', rare:true,
+      apply: () => { RESURRECTION=true; } },
+    initAI: (b) => { b.summonTimer=0; b.summonCount=0; },
+    updateAI: (b, p) => {
+      const dx=p.x-b.x, dy=p.y-b.y, d=Math.sqrt(dx*dx+dy*dy)||1;
+      b.x+=dx/d*b.speed; b.y+=dy/d*b.speed;
+      const hpRatio=b.hp/b.maxHp;
+      const summonInterval=Math.max(40,Math.round(150*hpRatio));
+      b.summonTimer++;
+      const undeadCount=state.enemies.filter(e=>e.undead).length;
+      if(undeadCount<3) b.summonCount=Math.max(0,b.summonCount-1);
+      if(b.summonTimer>=summonInterval && b.summonCount<8){
+        b.summonTimer=0; b.summonCount++;
+        const side=Math.floor(Math.random()*4);
+        let ex,ey;
+        if(side===0){ex=Math.random()*W;ey=-15;}
+        else if(side===1){ex=W+15;ey=Math.random()*H;}
+        else if(side===2){ex=Math.random()*W;ey=H+15;}
+        else{ex=-15;ey=Math.random()*H;}
+        const tier=Math.floor(state.wave/10);
+        const hpS=1+tier*0.6;
+        state.enemies.push({x:ex,y:ey,r:9,
+          hp:Math.round((2+state.wave*0.4)*hpS),maxHp:Math.round((2+state.wave*0.4)*hpS),
+          speed:(1.5+state.wave*0.06)*(1+tier*0.12),color:'#44ff88',score:5,
+          type:'melee',dmgMult:1+tier*0.25,undead:true});
+        particles(ex,ey,'#44ff88',8);
+      }
+    }
+  },
+
+  // ─── MIME (fixe vague 100) ────────────────────────────────────
+  mime: {
+    name: 'LE MIME',
+    color: '#ffffff',
+    r: 20,
+    hpBase: 300,
+    speed: 1.8,
+    intro: { label: '⚠ BOSS FINAL · VAGUE 100 ⚠', color: '#ffffff' },
+    drop: { id:'clone', icon:'🪞', name:'CLONE', desc:'Un fantôme de vous tire en miroir pendant 8s.', rare:true,
+      apply: () => { CLONE_ACTIVE=true; CLONE_TIMER=480; } },
+    initAI: (b) => { b.mirrorTimer=0; },
+    updateAI: (b, p) => {
+      const targetX=W-p.x, targetY=H-p.y;
+      const ddx=targetX-b.x, ddy=targetY-b.y, dd=Math.sqrt(ddx*ddx+ddy*ddy)||1;
+      b.x+=ddx/dd*b.speed*1.5; b.y+=ddy/dd*b.speed*1.5;
+      b.x=Math.max(b.r,Math.min(W-b.r,b.x)); b.y=Math.max(b.r,Math.min(H-b.r,b.y));
+      b.mirrorTimer++;
+      if(b.mirrorTimer>=30){
+        b.mirrorTimer=0;
+        const dx=p.x-b.x, dy=p.y-b.y, dl=Math.sqrt(dx*dx+dy*dy)||1;
+        const spd=Math.min(7,3+state.wave*0.03);
+        state.enemyBullets.push({x:b.x,y:b.y,vx:dx/dl*spd,vy:dy/dl*spd,r:5,
+          damage:Math.round(8*(b.dmgMult||1)),color:'#cccccc',life:80,owner:'enemy'});
       }
     }
   }
@@ -2063,26 +2259,49 @@ const BOSS_DEFS = {
 
 let boss = null; // active boss object
 let ARMOR = false, HOMING = false, MINION_SPAWN = false;
+let RESURRECTION = false;
+let WEB_TRAIL = false;
+let FRACTURE = false;
+let SURCHAUFFE = false, surchauffeTimer = 0, surchauffeLevel = 0;
+let DARK_VISION = false;
+let CLONE_ACTIVE = false, CLONE_TIMER = 0;
+let VAMPIRISM_STACKS = 0;
+let ORB_DAMAGE_MULT = 1.0, ORB_SPEED_MULT = 1.0, ORB_SIZE_MULT = 1.0;
+let SHIELD_STACKS = 0, BIGGER_BULLETS_BONUS = 4;
+let EXPLOSION_LEVEL = 0, CHAIN_LEVEL = 0;
+let LIFE_STEALER = false, lifeStealerTimer = 0;
+let SURGE_UNLOCKED = false, SURGE_CHARGE = 0, SURGE_MAX = 20;
+let TELEPORT_UNLOCKED = false, TELEPORT_CD = 0, TELEPORT_CD_MAX = 240;
+let FAMILIAR_UNLOCKED = false, FAMILIAR_CD = 0, FAMILIAR_CD_MAX = 300;
+let familiars = [];
 let allies = []; // active mini-allies
 
 function isBossWave(w) { return w % 10 === 0; }
+
+function getBossKeyForWave(w) {
+  if (w === 50)  return 'necromant';
+  if (w === 100) return 'mime';
+  const tier = Math.floor(w / 10);
+  const pool = Object.keys(BOSS_DEFS).filter(k => {
+    if (k === 'necromant' || k === 'mime') return false;
+    if (tier < 2 && ['conducteur','leviathan','berserk','eclipse'].includes(k)) return false;
+    if (tier < 3 && ['leviathan','berserk'].includes(k)) return false;
+    return true;
+  });
+  return pool[Math.floor(Math.random()*pool.length)];
+}
 
 function startBossWave(forcedKey = null) {
   state.enemies = []; state.enemyBullets = []; state.bullets = [];
   state.enemiesToSpawn = 0;
   // Pick boss
-  const keys = Object.keys(BOSS_DEFS);
-  const key = forcedKey || keys[Math.floor(Math.random()*keys.length)];
+  const key = forcedKey || getBossKeyForWave(state.wave);
   const def = BOSS_DEFS[key];
-  const waveTier = Math.floor(state.wave / 10);
-  const hpTotal = Math.round(def.hpBase * (1 + waveTier * 0.5) + state.wave * 5);
-  const bossSpeedMult = 1 + waveTier * 0.12;
+  const hpTotal = def.hpBase + state.wave * 4;
   boss = {
     ...def,
     x: W/2, y: -def.r,
     hp: hpTotal, maxHp: hpTotal,
-    speed: def.speed * bossSpeedMult,
-    dmgMult: 1 + waveTier * 0.2, // boss attacks deal more dmg at higher tiers
     def,
   };
   def.initAI(boss);
@@ -2110,39 +2329,6 @@ function updateBossBar() {
   document.getElementById('boss-bar-hp-text').textContent = `${Math.max(0,Math.round(boss.hp))} / ${boss.maxHp}`;
 }
 
-function updateFamiliars() {
-  if (familiars.length === 0) return;
-  const p = state.player;
-  familiars = familiars.filter(f => f.hp > 0);
-  familiars.forEach(f => {
-    // Follow player loosely
-    const dx=p.x-f.x, dy=p.y-f.y, d=Math.sqrt(dx*dx+dy*dy)||1;
-    if (d > 60) { f.x += dx/d*2.5; f.y += dy/d*2.5; }
-    // Shoot nearest enemy
-    f.shootTimer = (f.shootTimer||0) + 1;
-    if (f.shootTimer >= 40) {
-      f.shootTimer = 0;
-      let nearest = null, nd = 9999;
-      state.enemies.forEach(e => { const dist=Math.hypot(e.x-f.x,e.y-f.y); if(dist<nd&&dist<300){nd=dist;nearest=e;} });
-      if (boss) { const bd=Math.hypot(boss.x-f.x,boss.y-f.y); if(bd<nd){nearest=boss;nd=bd;} }
-      if (nearest) {
-        const dx2=nearest.x-f.x, dy2=nearest.y-f.y, dl=Math.sqrt(dx2*dx2+dy2*dy2)||1;
-        state.bullets.push({ x:f.x, y:f.y, vx:dx2/dl*9, vy:dy2/dl*9, r:4, damage:state.buffs.damage*0.5, color:'#ffaa00', life:70, owner:'familiar' });
-      }
-    }
-    // Enemy contact damage
-    state.enemies.forEach(e => {
-      if (Math.hypot(e.x-f.x,e.y-f.y) < e.r+f.r) {
-        f.hp -= 2;
-        particles(f.x, f.y, '#ffaa00', 3);
-      }
-    });
-    if (boss && Math.hypot(boss.x-f.x,boss.y-f.y) < boss.r+f.r) {
-      f.hp -= 3; particles(f.x, f.y, '#ffaa00', 3);
-    }
-  });
-}
-
 function updateBoss() {
   if (!boss) return;
   const p = state.player;
@@ -2164,7 +2350,7 @@ function updateBoss() {
   const ddx=boss.x-p.x, ddy=boss.y-p.y;
   if (Math.sqrt(ddx*ddx+ddy*ddy) < p.r + boss.r && p.iframes <= 0) {
     if (SHIELD_ACTIVE) { SHIELD_ACTIVE=false; p.iframes=60; particles(p.x,p.y,'#aaddff',16); }
-    else { const bdmg = Math.round((ARMOR ? 10 : 15) * (boss.dmgMult||1)); p.hp -= bdmg; p.iframes = 40+I_FRAME_BONUS; particles(p.x,p.y,'#ff2244',10); }
+    else { p.hp -= ARMOR ? 10 : 15; p.iframes = 40+I_FRAME_BONUS; particles(p.x,p.y,'#ff2244',10); }
   }
 
   // Titan telegraph visual
@@ -2200,6 +2386,18 @@ function updateBoss() {
         }
       });
     }
+    // Hit conducteur pylons
+    if (boss.pylons) {
+      boss.pylons.forEach(pl => {
+        if(hitBoss) return;
+        const pdx=b.x-pl.x, pdy=b.y-pl.y;
+        if(Math.sqrt(pdx*pdx+pdy*pdy) < pl.r+b.r+(BIGGER_BULLETS?BIGGER_BULLETS_BONUS:0)) {
+          pl.hp -= b.damage; particles(b.x,b.y,'#ffee00',4); hitBoss=true;
+          if(pl.hp<=0) particles(pl.x,pl.y,'#ffee00',12);
+        }
+      });
+    }
+
     // Hit boss core
     const bdx=b.x-boss.x, bdy=b.y-boss.y;
     if (!hitBoss && Math.sqrt(bdx*bdx+bdy*bdy) < boss.r + b.r + (BIGGER_BULLETS?4:0)) {
@@ -2216,13 +2414,10 @@ function updateBoss() {
     for(let i=0;i<40;i++) particles(boss.x+(Math.random()-0.5)*80, boss.y+(Math.random()-0.5)*80, boss.color, 1);
     state.score += 500 * state.wave;
     state.kills++;
+    if (!state.bossesKilled) state.bossesKilled=[];
+    state.bossesKilled.push({ name:boss.def.name, color:boss.def.color, wave:state.wave });
     document.getElementById('boss-bar-wrapper').classList.remove('visible');
-    // 50% drop chance
-    if (Math.random() < 0.5) {
-      showBossDrop(boss.def);
-    } else {
-      onBossDefeatedNoDrop();
-    }
+    showBossDrop(boss.def);
     boss = null;
   }
 }
@@ -2258,28 +2453,31 @@ function updateAllies() {
 }
 
 function showBossDrop(def) {
-  // Apply drop immediately
+  state.phase = 'bossdrop';
+  // Clear everything so wave-clear condition can't fire
+  state.enemiesToSpawn = 0;
+  state.enemies = [];
+  state.enemyBullets = [];
+
   const drop = def.drop;
-  drop.apply();
-  recordBuff(drop);
-  state.player.hp = state.player.maxHp;
-
-  // Show inline popup for 3 seconds
-  const popup = document.getElementById('drop-popup');
-  document.getElementById('drop-popup-icon').textContent = drop.icon;
-  document.getElementById('drop-popup-title').textContent = '★ DROP OBTENU ★';
-  document.getElementById('drop-popup-title').style.color = def.color;
-  document.getElementById('drop-popup-name').textContent = drop.name;
-  document.getElementById('drop-popup-name').style.color = def.color;
-  document.getElementById('drop-popup-desc').textContent = drop.desc;
-  popup.style.borderColor = def.color;
-  popup.style.boxShadow = `0 0 30px ${def.color}40`;
-  popup.classList.remove('hidden');
-  popup.style.animation = 'none'; void popup.offsetWidth; popup.style.animation = 'popIn 0.3s ease-out';
-
-  setTimeout(() => {
-    popup.classList.add('hidden');
+  const screen = document.getElementById('boss-drop-screen');
+  const title = document.getElementById('boss-drop-title');
+  const wrapper = document.getElementById('boss-drop-card-wrapper');
+  title.style.color = def.color;
+  title.style.textShadow = `0 0 20px ${def.color}`;
+  wrapper.innerHTML = '';
+  const card = document.createElement('div');
+  card.className = 'boss-drop-card';
+  card.style.color = def.color;
+  card.style.background = `${def.color}08`;
+  card.innerHTML = `<span class="buff-icon">${drop.icon}</span><div class="buff-name">${drop.name}</div><div class="buff-desc">${drop.desc}</div>`;
+  card.onclick = () => {
+    drop.apply();
+    recordBuff(drop);
+    state.player.hp = state.player.maxHp;
+    document.getElementById('boss-drop-screen').classList.add('hidden');
     if (BOSSFIGHT_MODE) {
+      // Victory in practice — show congrats then return to practice screen
       state.phase = 'dead';
       document.getElementById('death-score').textContent = state.score.toLocaleString();
       document.getElementById('go-wave').textContent = '⚔ BOSS VAINCU';
@@ -2288,39 +2486,17 @@ function showBossDrop(def) {
       const sub = document.querySelector('#gameover-screen .overlay-sub');
       if (sub) { sub.textContent = 'VICTOIRE !'; sub.style.color = 'var(--neon-purple)'; }
       document.getElementById('gameover-screen').classList.remove('hidden');
-    } else {
-      state.wave++;
-      state.phase = 'playing';
-      startWave();
+      return;
     }
-  }, 2500);
-
-  // Keep phase as playing so game continues behind popup
-  state.enemiesToSpawn = 0;
-  state.enemies = [];
-  state.enemyBullets = [];
-}
-
-// ─── END BOSS SYSTEM ────────────────────────────────────────────
-
-function onBossDefeatedNoDrop() {
-  // Boss killed but no drop — just continue
-  state.player.hp = state.player.maxHp; // full heal regardless
-  if (BOSSFIGHT_MODE) {
-    state.phase = 'dead';
-    document.getElementById('death-score').textContent = state.score.toLocaleString();
-    document.getElementById('go-wave').textContent = '⚔ BOSS VAINCU';
-    document.getElementById('go-kills').textContent = state.kills;
-    document.getElementById('go-bossfight-btn').style.display = '';
-    const sub = document.querySelector('#gameover-screen .overlay-sub');
-    if (sub) { sub.textContent = 'VICTOIRE !'; sub.style.color = 'var(--neon-purple)'; }
-    document.getElementById('gameover-screen').classList.remove('hidden');
-  } else {
     state.wave++;
     state.phase = 'playing';
     startWave();
-  }
+  };
+  wrapper.appendChild(card);
+  screen.classList.remove('hidden');
 }
+
+// ─── END BOSS SYSTEM ────────────────────────────────────────────
 
 // --- BUFFS ---
 const BUFF_POOL = [
@@ -2332,7 +2508,7 @@ const BUFF_POOL = [
   { id:'backshot',  rare:false, icon:'🔄', name:'TIR ARRIÈRE',     desc:'Un projectile part en sens inverse à chaque tir.', apply: () => { BACK_SHOT = true; } },
   { id:'freeze',    rare:false, icon:'❄️', name:'GEL',              desc:'25% de chance de ralentir un ennemi touché.',      apply: () => { FREEZE_CHANCE += 0.25; } },
   { id:'piercing',  rare:true,  icon:'🎯', name:'PERFORATION',     desc:'Vos tirs traversent tous les ennemis.',            apply: () => { PIERCING = true; } },
-  { id:'triple',    rare:true,  icon:'🔱', name:'TRIPLE TIR',      desc:'3 projectiles simultanément en éventail.',         apply: () => { TRIPLE_SHOT = Math.min(3, TRIPLE_SHOT + 1); } },
+  { id:'triple',    rare:true,  icon:'🔱', name:'TRIPLE TIR',      desc:'3 projectiles simultanément en éventail.',         apply: () => { TRIPLE_SHOT = Math.min(3, TRIPLE_SHOT+1); } },
   { id:'explode',   rare:true,  icon:'💣', name:'EXPLOSION',       desc:'Chaque kill explose et blesse les proches.',       apply: () => { EXPLOSION_ON_KILL = true; } },
   { id:'chain',     rare:true,  icon:'⚡', name:'CHAÎNE ÉCLAIR',   desc:'Chaque kill envoie un arc sur l\'ennemi le plus proche.', apply: () => { CHAIN_LIGHTNING = true; } },
   // ── Pouvoirs ──
@@ -2344,33 +2520,21 @@ const BUFF_POOL = [
   { id:'maxhp',     rare:false, icon:'❤️', name:'VIE MAX',          desc:'+30 PV max. Récupère aussi 20 PV.',               apply: () => { state.buffs.maxHp+=30; state.player.maxHp+=30; state.player.hp=Math.min(state.player.hp+20,state.player.maxHp); } },
   { id:'regen',     rare:false, icon:'🧬', name:'RÉGÉNÉRATION',    desc:'+20 PV restaurés immédiatement.',                  apply: () => { state.player.hp = Math.min(state.player.hp+20,state.player.maxHp); } },
   { id:'pasregen',  rare:false, icon:'🩺', name:'REGEN PASSIVE',   desc:'+1 PV toutes les 3 secondes.',                    apply: () => { PASSIVE_REGEN = true; } },
-  { id:'vampire',   rare:true,  icon:'🩸', name:'VAMPIRISME',      desc:'Chaque kill redonne +1 PV (max 5). S\'accumule.',  apply: () => { VAMPIRISM = true; VAMPIRISM_STACKS = Math.min(4, VAMPIRISM_STACKS+1); } },
+  { id:'vampire',   rare:true,  icon:'🩸', name:'VAMPIRISME',      desc:'Chaque kill redonne 3 PV.',                        apply: () => { VAMPIRISM = true; } },
   { id:'shield',    rare:false, icon:'🛡️', name:'BOUCLIER',         desc:'Absorbe intégralement le prochain coup reçu.',     apply: () => { SHIELD_ACTIVE = true; } },
   { id:'iframes',   rare:false, icon:'👻', name:'INTANGIBILITÉ',   desc:'Durée d\'invulnérabilité +50% après un hit.',      apply: () => { I_FRAME_BONUS += 20; } },
   // ── Mobilité & Utilitaires ──
   { id:'speed',     rare:false, icon:'💨', name:'VITESSE',          desc:'Déplacement +20% plus rapide.',                   apply: () => { state.buffs.speed += 0.2; } },
   { id:'turbo',     rare:false, icon:'🌪️', name:'TURBO',            desc:'Déplacement +40% plus rapide.',                   apply: () => { state.buffs.speed += 0.4; } },
   { id:'shrink',    rare:false, icon:'🔵', name:'SILHOUETTE',       desc:'Votre hitbox réduit de 25%.',                     apply: () => { state.player.r = Math.max(5, state.player.r*0.75); } },
-  { id:'teleport',   rare:false, icon:'📍', name:'TÉLÉPORT',         desc:'Touche E : se téléporte à la position de la souris (CD 4s).', apply: () => { TELEPORT_UNLOCKED = true; } },
   { id:'scoremult', rare:false, icon:'✨', name:'MULTIPLICATEUR',  desc:'Score par kill +50%.',                             apply: () => { SCORE_MULT += 0.5; } },
-  // ── Familier ──
-  { id:'familiar',   rare:true,  icon:'🐾', name:'FAMILIER',         desc:'Débloque l\'invocation (touche A). Max 3, 25 PV chacun, tire à distance.', apply: () => { FAMILIAR_UNLOCKED = true; } },
-  // ── Améliorations orbes ──
-  { id:'orbdmg',     rare:false, icon:'💫', name:'ORBE+ DÉGÂTS',     desc:'Vos orbes infligent +50% de dégâts.',              apply: () => { ORB_DAMAGE_MULT += 0.5; } },
-  { id:'orbspd',     rare:false, icon:'🌀', name:'ORBE+ VITESSE',    desc:'Vos orbes tournent 50% plus vite.',               apply: () => { ORB_SPEED_MULT += 0.5; } },
-  { id:'orbsize',    rare:false, icon:'🔮', name:'ORBE+ TAILLE',     desc:'Vos orbes sont plus larges (+50% rayon).',        apply: () => { ORB_SIZE_MULT += 0.5; } },
 ];
 
 let FIRE_RATE_BONUS = 0, BULLET_SPEED_BONUS = 0, SCORE_MULT = 1, I_FRAME_BONUS = 0, FREEZE_CHANCE = 0;
 let PIERCING = false, TRIPLE_SHOT = 0, BIGGER_BULLETS = false, BACK_SHOT = false;
 let EXPLOSION_ON_KILL = false, CHAIN_LIGHTNING = false, VAMPIRISM = false;
-let VAMPIRISM_STACKS = 0;
 let SHIELD_ACTIVE = false, PASSIVE_REGEN = false;
 let ORB_COUNT = 0, SHOCKWAVE = false, BULLET_TIME = false;
-let ORB_DAMAGE_MULT = 1.0, ORB_SPEED_MULT = 1.0, ORB_SIZE_MULT = 1.0;
-let TELEPORT_UNLOCKED = false, TELEPORT_CD = 0, TELEPORT_CD_MAX = 240; // 4s at 60fps
-let FAMILIAR_UNLOCKED = false, FAMILIAR_CD = 0, FAMILIAR_CD_MAX = 300; // 5s
-let familiars = []; // player-controlled familiars
 
 let rerollsLeft = 3;
 
@@ -2387,8 +2551,8 @@ function showBuffs() {
 }
 
 function renderBuffCards() {
-  // Separate rare from common; hide orb upgrades if no orbs
-  const common = BUFF_POOL.filter(b => !b.rare && !(b.id.startsWith('orb') && b.id !== 'orb1' && b.id !== 'orb2' && ORB_COUNT === 0));
+  // Separate rare from common
+  const common = BUFF_POOL.filter(b => !b.rare);
   const rare   = BUFF_POOL.filter(b => b.rare);
   // Shuffle both pools
   const shuffle = arr => { for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];}return arr; };
@@ -2443,6 +2607,16 @@ function draw() {
 
   if (state.phase === 'start' || state.phase === 'dead') return;
 
+  // Eclipse darkness (drawn last to cover most things)
+  const eclipseDark = state.eclipseDarkness || 0;
+
+  // Resurrection flash
+  if (state.resurrectionFlash > 0) {
+    state.resurrectionFlash--;
+    ctx.fillStyle = `rgba(255,220,100,${state.resurrectionFlash/30*0.45})`;
+    ctx.fillRect(0,0,W,H);
+  }
+
 
 
   // Bullet time tint
@@ -2461,22 +2635,6 @@ function draw() {
     ctx.arc(p2.x, p2.y, 150 * (1.05 - state.shockwavePulse), 0, Math.PI*2);
     ctx.stroke();
     ctx.shadowBlur = 0;
-  }
-
-  // Explosion rings
-  if (state.explosions) {
-    state.explosions = state.explosions.filter(ex => {
-      ex.r += ex.maxR / ex.life * 2;
-      ex.life--;
-      if (ex.life <= 0) return false;
-      const alpha = ex.life / 20;
-      ctx.strokeStyle = `rgba(255,136,0,${alpha * 0.8})`;
-      ctx.lineWidth = 3;
-      ctx.shadowBlur = 12; ctx.shadowColor = '#ff8800';
-      ctx.beginPath(); ctx.arc(ex.x, ex.y, ex.r, 0, Math.PI*2); ctx.stroke();
-      ctx.shadowBlur = 0;
-      return true;
-    });
   }
 
   // Particles
@@ -2525,22 +2683,6 @@ function draw() {
     ctx.beginPath();ctx.arc(e.x,e.y,e.r*0.5,0,Math.PI*2);ctx.fill();
   });
   ctx.shadowBlur=0;
-
-  // Familiars (player companions)
-  familiars.forEach(f => {
-    // HP bar
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.fillRect(f.x-f.r, f.y-f.r-10, f.r*2, 3);
-    ctx.fillStyle = '#ffaa00';
-    ctx.fillRect(f.x-f.r, f.y-f.r-10, f.r*2*(f.hp/f.maxHp), 3);
-    // Body
-    ctx.shadowBlur = 16; ctx.shadowColor = '#ffaa00';
-    ctx.fillStyle = '#ffaa00';
-    ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = 'rgba(0,0,0,0.4)';
-    ctx.beginPath(); ctx.arc(f.x, f.y, f.r*0.5, 0, Math.PI*2); ctx.fill();
-  });
-  ctx.shadowBlur = 0;
 
   // Mini-allies
   allies.forEach(a => {
@@ -2612,21 +2754,98 @@ function draw() {
     ctx.shadowBlur = 0;
   }
 
+  // Boss-specific: web zones
+  if (boss && boss.webs) {
+    boss.webs.forEach(w => {
+      const alpha = (w.life/400)*0.25;
+      ctx.fillStyle = `rgba(170,68,255,${alpha})`;
+      ctx.strokeStyle = `rgba(170,68,255,${alpha*2})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(w.x,w.y,w.r,0,Math.PI*2); ctx.fill(); ctx.stroke();
+      // Web lines
+      for(let i=0;i<6;i++){
+        const a=(i/6)*Math.PI*2;
+        ctx.beginPath(); ctx.moveTo(w.x,w.y); ctx.lineTo(w.x+Math.cos(a)*w.r,w.y+Math.sin(a)*w.r); ctx.stroke();
+      }
+    });
+  }
+
+  // Boss-specific: conducteur pylons + arcs
+  if (boss && boss.pylons) {
+    boss.pylons.forEach(pl => {
+      ctx.shadowBlur=14; ctx.shadowColor='#ffee00';
+      ctx.fillStyle='#ffee00';
+      ctx.beginPath(); ctx.arc(pl.x,pl.y,pl.r,0,Math.PI*2); ctx.fill();
+      ctx.shadowBlur=0;
+    });
+    for(let i=0;i<boss.pylons.length;i++){
+      for(let j=i+1;j<boss.pylons.length;j++){
+        const pa=boss.pylons[i],pb=boss.pylons[j];
+        if(Math.hypot(pa.x-pb.x,pa.y-pb.y)<220){
+          ctx.strokeStyle=`rgba(255,238,0,${0.3+Math.sin(Date.now()*0.01+i)*0.2})`;
+          ctx.lineWidth=2; ctx.shadowBlur=8; ctx.shadowColor='#ffee00';
+          ctx.setLineDash([3,5]);
+          ctx.beginPath(); ctx.moveTo(pa.x,pa.y); ctx.lineTo(pb.x,pb.y); ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.shadowBlur=0;
+        }
+      }
+    }
+  }
+
+  // Boss-specific: leviathan shockwaves
+  if (boss && boss.shockwaves) {
+    boss.shockwaves.forEach(sw => {
+      const alpha = sw.life/75;
+      ctx.strokeStyle = `rgba(0,136,255,${alpha*0.7})`;
+      ctx.lineWidth = 3;
+      ctx.shadowBlur = 10; ctx.shadowColor = '#0088ff';
+      ctx.beginPath(); ctx.arc(sw.x,sw.y,sw.r,0,Math.PI*2); ctx.stroke();
+      ctx.shadowBlur=0;
+    });
+  }
+
+  // Berserk rage indicator
+  if (boss && boss.rage !== undefined && boss.rage > 0) {
+    const rageAlpha = (boss.rage/100)*0.3;
+    ctx.fillStyle = `rgba(255,68,0,${rageAlpha})`;
+    ctx.fillRect(0,0,W,H);
+    // rage bar below boss HP bar
+    const barW = 200;
+    ctx.fillStyle='rgba(0,0,0,0.5)';
+    ctx.fillRect(W/2-barW/2, 80, barW, 6);
+    ctx.fillStyle=`rgba(255,${Math.round(100-boss.rage),0},${boss.rage>60?'255':'0'})`;
+    ctx.fillStyle=boss.rage>60?'#ff0044':'#ff8800';
+    ctx.fillRect(W/2-barW/2, 80, barW*(boss.rage/100), 6);
+  }
+
+  // Life Stealer zone
+  if (LIFE_STEALER) {
+    const lsPulse=0.3+Math.sin(Date.now()*0.003)*0.15;
+    ctx.strokeStyle=`rgba(170,68,255,${lsPulse})`;
+    ctx.lineWidth=1.5; ctx.setLineDash([4,6]);
+    ctx.beginPath(); ctx.arc(state.player.x,state.player.y,140,0,Math.PI*2); ctx.stroke();
+    ctx.setLineDash([]);
+    if((state.lifeStealPulse||0)>0){
+      ctx.fillStyle=`rgba(170,68,255,${state.lifeStealPulse*0.08})`;
+      ctx.beginPath(); ctx.arc(state.player.x,state.player.y,140,0,Math.PI*2); ctx.fill();
+    }
+  }
+
   // Player
   const p = state.player;
 
   // Orbs
   if (ORB_COUNT > 0) {
-    const orbDrawR = 7 * ORB_SIZE_MULT;
     for (let oi = 0; oi < ORB_COUNT; oi++) {
       const oa = (state.orbAngle||0) + (oi / ORB_COUNT) * Math.PI * 2;
       const ox = p.x + Math.cos(oa) * 36;
       const oy = p.y + Math.sin(oa) * 36;
       ctx.shadowBlur = 18; ctx.shadowColor = '#ffcc00';
       ctx.fillStyle = '#ffcc00';
-      ctx.beginPath(); ctx.arc(ox, oy, orbDrawR, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = 'rgba(255,200,0,0.25)';
-      ctx.beginPath(); ctx.arc(ox, oy, orbDrawR*1.7, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(ox, oy, 7, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = 'rgba(255,200,0,0.3)';
+      ctx.beginPath(); ctx.arc(ox, oy, 12, 0, Math.PI*2); ctx.fill();
     }
     ctx.shadowBlur=0;
   }
@@ -2652,6 +2871,45 @@ function draw() {
     ctx.beginPath();ctx.arc(p.x,p.y,4,0,Math.PI*2);ctx.fill();
   }
   ctx.shadowBlur=0;
+
+  // Eclipse darkness overlay (drawn last)
+  if (eclipseDark > 0) {
+    // Full darkness
+    ctx.fillStyle = `rgba(4,6,10,${eclipseDark})`;
+    ctx.fillRect(0,0,W,H);
+    // If player has dark vision, keep vision circle
+    const p2 = state.player;
+    const visionR = DARK_VISION ? 200 : 80;
+    const grad = ctx.createRadialGradient(p2.x,p2.y,0,p2.x,p2.y,visionR);
+    grad.addColorStop(0,'rgba(4,6,10,0)');
+    grad.addColorStop(1,`rgba(4,6,10,${eclipseDark})`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0,0,W,H);
+  }
+
+  // Resurrection ring around player
+  if (RESURRECTION) {
+    const p3=state.player;
+    const pulse=0.5+Math.sin(Date.now()*0.005)*0.3;
+    ctx.strokeStyle=`rgba(255,221,136,${pulse})`;
+    ctx.lineWidth=2; ctx.shadowBlur=16; ctx.shadowColor='#ffdd88';
+    ctx.globalAlpha=pulse;
+    ctx.beginPath(); ctx.arc(p3.x,p3.y,p3.r+14,0,Math.PI*2); ctx.stroke();
+    ctx.globalAlpha=1; ctx.shadowBlur=0;
+  }
+
+  // Clone ghost
+  if (CLONE_ACTIVE && state.player) {
+    const p4=state.player;
+    const ghostX=W-p4.x, ghostY=H-p4.y;
+    const alpha=Math.min(1,(CLONE_TIMER/480));
+    ctx.globalAlpha=alpha*0.5;
+    ctx.strokeStyle='#00ffdd'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(ghostX,ghostY,p4.r,0,Math.PI*2); ctx.stroke();
+    ctx.fillStyle='rgba(0,255,221,0.3)';
+    ctx.beginPath(); ctx.arc(ghostX,ghostY,4,0,Math.PI*2); ctx.fill();
+    ctx.globalAlpha=1;
+  }
 }
 
 let loopId = null;
@@ -2685,31 +2943,19 @@ const BOSSFIGHT_BUFF_LIST = [
   { id:'scoremult', icon:'✨', name:'MULTIPLIC.',     rare:false, apply: () => { SCORE_MULT += 0.5; } },
   { id:'orbs',      icon:'🌀', name:'ORBE',           rare:false, apply: () => { ORB_COUNT += 1; } },
   { id:'piercing',  icon:'🎯', name:'PERFORATION',    rare:true,  apply: () => { PIERCING = true; } },
-  { id:'triple',    icon:'🔱', name:'TRIPLE TIR',     rare:true,  apply: () => { TRIPLE_SHOT = Math.min(3, TRIPLE_SHOT + 1); } },
+  { id:'triple',    icon:'🔱', name:'TRIPLE TIR',     rare:true,  apply: () => { TRIPLE_SHOT = Math.min(3, TRIPLE_SHOT+1); } },
   { id:'explode',   icon:'💣', name:'EXPLOSION',      rare:true,  apply: () => { EXPLOSION_ON_KILL = true; } },
   { id:'chain',     icon:'⚡', name:'CHAÎNE ÉCLAIR',  rare:true,  apply: () => { CHAIN_LIGHTNING = true; } },
   { id:'shockwave', icon:'🌊', name:'ONDE CHOC',      rare:true,  apply: () => { SHOCKWAVE = true; } },
   { id:'bullettime',icon:'⏱️', name:'BULLET TIME',    rare:true,  apply: () => { BULLET_TIME = true; } },
-  { id:'vampire',   icon:'🩸', name:'VAMPIRISME',     rare:true,  apply: () => { VAMPIRISM = true; VAMPIRISM_STACKS = Math.min(4, VAMPIRISM_STACKS+1); } },
+  { id:'vampire',   icon:'🩸', name:'VAMPIRISME',     rare:true,  apply: () => { VAMPIRISM = true; } },
   { id:'homing',    icon:'🔮', name:'ŒIL CHASSEUR',   rare:true,  apply: () => { HOMING = true; } },
-  { id:'teleport',  icon:'📍', name:'TÉLÉPORT',         rare:false, apply: () => { TELEPORT_UNLOCKED = true; } },
-  { id:'familiar',  icon:'🐾', name:'FAMILIER',         rare:true,  apply: () => { FAMILIAR_UNLOCKED = true; } },
-  { id:'orbdmg',    icon:'💫', name:'ORBE+ DÉGÂTS',    rare:false, apply: () => { ORB_DAMAGE_MULT += 0.5; } },
-  { id:'orbspd',    icon:'🌀', name:'ORBE+ VITESSE',   rare:false, apply: () => { ORB_SPEED_MULT += 0.5; } },
-  { id:'orbsize',   icon:'🔮', name:'ORBE+ TAILLE',    rare:false, apply: () => { ORB_SIZE_MULT += 0.5; } },
 ];
 
 function openBossFight() {
   bfPicks = {};
   bfSelectedBoss = null;
-  // Hide any screens that might be visible (game over, start, etc.)
-  document.getElementById('gameover-screen').classList.add('hidden');
   document.getElementById('start-screen').classList.add('hidden');
-  document.getElementById('bossfight-badge').classList.add('hidden');
-  // Reset game over sub text if altered by boss fight victory
-  const sub = document.querySelector('#gameover-screen .overlay-sub');
-  if (sub) { sub.textContent = 'GAME OVER'; sub.style.color = ''; }
-  document.getElementById('go-bossfight-btn').style.display = 'none';
   document.getElementById('bossfight-screen').classList.remove('hidden');
   renderBFBossList();
   renderBFBuffGrid();
@@ -2820,17 +3066,25 @@ function startBossFight() {
   state.regenTimer = 0; state.timeScale = 1; state.shockwavePulse = 0; state.orbAngle = 0;
   state.enemiesToSpawn = 0;
   acquiredBuffs = [];
-  FIRE_RATE_BONUS = 0; PIERCING = false; TRIPLE_SHOT = false;
+  FIRE_RATE_BONUS = 0; PIERCING = false; TRIPLE_SHOT = 0;
   BIGGER_BULLETS = false; BULLET_SPEED_BONUS = 0; EXPLOSION_ON_KILL = false;
   VAMPIRISM = false; VAMPIRISM_STACKS = 0; SHIELD_ACTIVE = false; PASSIVE_REGEN = false;
   I_FRAME_BONUS = 0; SCORE_MULT = 1;
-  ORB_COUNT = 0; CHAIN_LIGHTNING = false; SHOCKWAVE = false;
+  ORB_COUNT = 0; ORB_DAMAGE_MULT=1; ORB_SPEED_MULT=1; ORB_SIZE_MULT=1;
+  CHAIN_LIGHTNING = false; SHOCKWAVE = false;
   BULLET_TIME = false; FREEZE_CHANCE = 0; BACK_SHOT = false;
   ARMOR = false; HOMING = false; MINION_SPAWN = false;
   boss = null; allies = []; familiars = [];
-  TELEPORT_UNLOCKED = false; TELEPORT_CD = 0;
-  FAMILIAR_UNLOCKED = false; FAMILIAR_CD = 0;
-  ORB_DAMAGE_MULT = 1.0; ORB_SPEED_MULT = 1.0; ORB_SIZE_MULT = 1.0;
+  RESURRECTION = false; WEB_TRAIL=false; FRACTURE=false;
+  SURCHAUFFE=false; surchauffeLevel=0; surchauffeTimer=0;
+  DARK_VISION=false; CLONE_ACTIVE=false; CLONE_TIMER=0;
+  SHIELD_STACKS=0; BIGGER_BULLETS_BONUS=4;
+  EXPLOSION_LEVEL=0; CHAIN_LEVEL=0;
+  LIFE_STEALER=false; lifeStealerTimer=0;
+  SURGE_UNLOCKED=false; SURGE_CHARGE=0;
+  TELEPORT_UNLOCKED=false; TELEPORT_CD=0;
+  FAMILIAR_UNLOCKED=false; FAMILIAR_CD=0; familiars=[];
+  TRIPLE_SHOT=0;
 
   // Apply picked buffs (each pick count times)
   Object.entries(bfPicks).forEach(([id, count]) => {
@@ -2846,19 +3100,6 @@ function startBossFight() {
 
   if (loopId) cancelAnimationFrame(loopId);
   loop();
-}
-
-function replayOrRestart() {
-  if (BOSSFIGHT_MODE) {
-    // Replay same boss with same picks — hide game over and relaunch
-    document.getElementById('gameover-screen').classList.add('hidden');
-    const sub = document.querySelector('#gameover-screen .overlay-sub');
-    if (sub) { sub.textContent = 'GAME OVER'; sub.style.color = ''; }
-    document.getElementById('go-bossfight-btn').style.display = 'none';
-    startBossFight(); // reuse same bfPicks + bfSelectedBoss
-  } else {
-    startGame();
-  }
 }
 
 function goToMenu() {
@@ -2884,63 +3125,83 @@ function goToMenu() {
 
 // ─── SCOREBOARD SYSTEM ──────────────────────────────────────────
 
+const SB_KEY = 'oaa_scores_v1';
 const MAX_SCORES = 10;
 
-async function loadScores() {
-  if (!db) return [];
-  try {
-    const q = query(collection(db,'oaa_scores'), orderBy('score','desc'), limit(MAX_SCORES));
-    const snap = await getDocs(q);
-    return snap.docs.map(d => ({ ...d.data(), _id: d.id }));
-  } catch(e) { console.error(e); return []; }
+function loadScores() {
+  try { return JSON.parse(localStorage.getItem(SB_KEY) || '[]'); }
+  catch(e) { return []; }
 }
 
-async function saveScoreToFirebase(run) {
-  if (!db) return;
-  try {
-    await addDoc(collection(db,'oaa_scores'), run);
-  } catch(e) { console.error('Firebase error:', e); }
+function saveScores(arr) {
+  localStorage.setItem(SB_KEY, JSON.stringify(arr));
 }
 
 function buildRunSnapshot() {
-  // Capture current run state for storage
+  const bossDropsList = [];
+  if (ARMOR)        bossDropsList.push({ icon:'🦾', name:'ARMURE' });
+  if (HOMING)       bossDropsList.push({ icon:'🔮', name:'ŒIL DU CHASSEUR' });
+  if (MINION_SPAWN) bossDropsList.push({ icon:'🐝', name:'ÉCLAT DE NUÉE' });
+  if (RESURRECTION) bossDropsList.push({ icon:'💚', name:'RÉSURRECTION' });
+  if (WEB_TRAIL)    bossDropsList.push({ icon:'🕸️', name:'FILET' });
+  if (FRACTURE)     bossDropsList.push({ icon:'💠', name:'FRACTURE' });
+  if (SURCHAUFFE)   bossDropsList.push({ icon:'🔥', name:'SURCHAUFFE' });
+  if (DARK_VISION)  bossDropsList.push({ icon:'🌑', name:'VISION NOCTURNE' });
+  if (CLONE_ACTIVE||CLONE_TIMER>0) bossDropsList.push({ icon:'🪞', name:'CLONE' });
+  if (SURGE_UNLOCKED) bossDropsList.push({ icon:'⚡', name:'DÉCHARGE' });
+
+  const playtime = window._gameStartTime ? Math.round((Date.now()-window._gameStartTime)/1000) : 0;
+
   return {
     score: state.score,
     wave: state.wave,
     kills: state.kills,
     date: new Date().toLocaleDateString('fr-FR'),
+    playtime,
     stats: {
-      maxHp: state.player ? state.player.maxHp : 100,
-      damage: state.buffs.damage.toFixed(1),
-      speed: (2.8 + (state.buffs.speed-1)*1.5).toFixed(1),
-      firerate: Math.max(3, Math.round(10/(1+FIRE_RATE_BONUS))),
-      orbs: ORB_COUNT,
-      scoreMult: SCORE_MULT.toFixed(1),
+      maxHp:      state.player ? state.player.maxHp : 100,
+      hp:         state.player ? Math.max(0,Math.round(state.player.hp)) : 0,
+      damage:     state.buffs.damage.toFixed(2),
+      speed:      (2.8+(state.buffs.speed-1)*1.5).toFixed(2),
+      firerate:   Math.max(3,Math.round(10/(1+FIRE_RATE_BONUS))),
+      orbs:       ORB_COUNT,
+      orbDmg:     ORB_DAMAGE_MULT.toFixed(1),
+      orbSpd:     ORB_SPEED_MULT.toFixed(1),
+      scoreMult:  SCORE_MULT.toFixed(1),
+      freeze:     Math.round(Math.min(75,FREEZE_CHANCE*100))+'%',
+      tripleShot: TRIPLE_SHOT,
+      piercing:   PIERCING,
+      vampStacks: VAMPIRISM_STACKS,
+      berserkRage: boss && boss.rage !== undefined ? Math.round(boss.rage) : 0,
+      specialPowers: [
+        PIERCING       ? '🎯 Perf.'  : null,
+        TRIPLE_SHOT>0  ? `🔱 ×${TRIPLE_SHOT}` : null,
+        HOMING         ? '🔮 Homing' : null,
+        LIFE_STEALER   ? '💜 LifeSt' : null,
+        SHOCKWAVE      ? '🌊 Onde'   : null,
+        BULLET_TIME    ? '⏱️ BulTm'  : null,
+        BACK_SHOT      ? '🔄 BkSht'  : null,
+      ].filter(Boolean),
     },
-    buffs: acquiredBuffs.map(b => ({ id:b.id, name:b.name, icon:b.icon, rare:b.rare, count:b.count })),
-    bossDrops: [
-      ARMOR       ? { id:'armor',  icon:'🦾', name:'ARMURE' }       : null,
-      HOMING      ? { id:'homing', icon:'🔮', name:'ŒIL DU CHASSEUR' } : null,
-      MINION_SPAWN? { id:'minion', icon:'🐝', name:'ÉCLAT DE NUÉE' } : null,
-    ].filter(Boolean),
+    buffs: acquiredBuffs.map(b => ({ id:b.id, name:b.name, icon:b.icon||'?', rare:b.rare, rarity:b.rarity, count:b.count })),
+    bossDrops: bossDropsList,
+    bossesKilled: state.bossesKilled || [],
   };
 }
 
 let pendingRun = null;
 
-async function showNameInput() {
+function showNameInput() {
   pendingRun = buildRunSnapshot();
   const preview = document.getElementById('name-preview');
   preview.innerHTML = `SCORE <span>${pendingRun.score.toLocaleString()}</span> · VAGUE <span>${pendingRun.wave}</span> · KILLS <span>${pendingRun.kills}</span>`;
   const input = document.getElementById('player-name-input');
-  // Pre-fill with last used name from Firebase
-  try {
-    const scores = await loadScores();
-    if (scores.length > 0) {
-      const last = [...scores].sort((a,b) => (b.timestamp||0) - (a.timestamp||0))[0];
-      if (last && last.name) input.value = last.name;
-    }
-  } catch(e) {}
+  // Pre-fill with last used name
+  const scores = loadScores();
+  if (scores.length > 0) {
+    const last = [...scores].sort((a,b) => b.date - a.date)[0];
+    if (last && last.name) input.value = last.name;
+  }
   input.select();
   document.getElementById('name-input-screen').classList.remove('hidden');
   setTimeout(() => input.focus(), 50);
@@ -2948,16 +3209,33 @@ async function showNameInput() {
   input.onkeydown = (e) => { if (e.key === 'Enter') submitScore(); };
 }
 
-async function submitScore() {
+function submitScore() {
   const input = document.getElementById('player-name-input');
   const name = (input.value.trim().toUpperCase() || 'ANONYME').slice(0, 16);
   document.getElementById('name-input-screen').classList.add('hidden');
 
   const run = { ...pendingRun, name, timestamp: Date.now() };
-
-  // Save to Firebase
-  await saveScoreToFirebase(run);
+  const scores = loadScores();
+  scores.push(run);
+  scores.sort((a,b) => b.score - a.score);
+  scores.splice(MAX_SCORES); // keep top 10
+  saveScores(scores);
   renderScoreboard();
+
+  // Save to server
+  fetch('save_score.php', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      game: 'ONE AGAINST ALL',
+      pseudo: name,
+      score: run.score,
+      wave: run.wave,
+      kills: run.kills,
+      playtime: window._gameStartTime ? Math.round((Date.now() - window._gameStartTime) / 1000) + 's' : '—',
+      date: run.date
+    })
+  }).catch(() => {});
 
   // Show game over screen now
   document.getElementById('death-score').textContent = run.score.toLocaleString();
@@ -2968,23 +3246,21 @@ async function submitScore() {
 
 function toggleScoreboard() {
   document.getElementById('sb-panel').classList.toggle('open');
-  renderScoreboard(); // async, auto-updates
+  renderScoreboard();
 }
 
-async function renderScoreboard() {
+function renderScoreboard() {
+  const scores = loadScores();
   const list = document.getElementById('sb-list');
   const empty = document.getElementById('sb-empty');
-  list.querySelectorAll('.sb-entry').forEach(e => e.remove());
-  list.insertAdjacentHTML('beforeend', '<div class="sb-entry" style="color:#3a4a5a;text-align:center;font-size:0.8rem;padding:1rem">Chargement…</div>');
-
-  const scores = await loadScores();
-  list.querySelectorAll('.sb-entry').forEach(e => e.remove());
-
   if (scores.length === 0) {
     empty.style.display = 'block';
+    // Remove old entries
+    list.querySelectorAll('.sb-entry').forEach(e => e.remove());
     return;
   }
   empty.style.display = 'none';
+  list.querySelectorAll('.sb-entry').forEach(e => e.remove());
 
   const rankClass = ['gold','silver','bronze'];
   scores.forEach((run, i) => {
@@ -3000,32 +3276,52 @@ async function renderScoreboard() {
       <div class="sb-score-col">
         <div class="sb-score-val">${run.score.toLocaleString()}</div>
       </div>
+      <button class="sb-detail-btn" title="Voir les détails" onclick="showRunDetail(${run.timestamp})">👁</button>
     `;
     list.appendChild(entry);
   });
 }
 
 function clearScores() {
-  alert('Les scores en ligne ne peuvent pas être effacés.');
+  if (!confirm('Effacer tous les scores ?')) return;
+  localStorage.removeItem(SB_KEY);
+  renderScoreboard();
 }
 
 function showRunDetail(timestamp) {
-  // Detail view not available for online scores
-  return;
+  const scores = loadScores();
+  const run = scores.find(r => r.timestamp === timestamp);
+  if (!run) return;
 
   document.getElementById('rdm-name').textContent = run.name;
-  document.getElementById('rdm-date').textContent = run.date;
+  document.getElementById('rdm-date').textContent = run.date + (run.playtime ? ` · ${Math.floor(run.playtime/60)}m${run.playtime%60}s` : '');
 
   const body = document.getElementById('rdm-body');
-  const bossHtml = run.bossDrops && run.bossDrops.length > 0
-    ? run.bossDrops.map(b => `<span class="rdm-buff-tag boss-tag">${b.icon} ${b.name}</span>`).join('')
-    : '<span style="font-size:9px;color:rgba(0,255,221,0.2)">aucun</span>';
+  const s = run.stats || {};
+
+  const rarityColor = { common:'rgba(0,255,221,0.7)', rare:'rgba(204,68,255,0.8)', legendary:'rgba(255,215,0,0.9)' };
+  const rarityLabel = { common:'', rare:' ✦', legendary:' ★★' };
 
   const buffsHtml = run.buffs && run.buffs.length > 0
-    ? run.buffs.map(b => `<span class="rdm-buff-tag ${b.rare?'rare-tag':''}">${b.icon} ${b.name}${b.count>1?` ×${b.count}`:''}</span>`).join('')
+    ? run.buffs.map(b => {
+        const col = rarityColor[b.rarity] || rarityColor.common;
+        const lbl = rarityLabel[b.rarity] || '';
+        return `<span class="rdm-buff-tag" style="border-color:${col};color:${col};background:${col.replace('0.7','0.06').replace('0.8','0.06').replace('0.9','0.06')}">${b.icon||'?'} ${b.name}${lbl}${b.count>1?` <b style="color:var(--neon-cyan)">×${b.count}</b>`:''}</span>`;
+      }).join('')
     : '<span style="font-size:9px;color:rgba(0,255,221,0.2)">aucun</span>';
 
-  const s = run.stats || {};
+  const bossHtml = run.bossDrops && run.bossDrops.length > 0
+    ? run.bossDrops.map(b => `<span class="rdm-buff-tag boss-tag">${b.icon||'?'} ${b.name}</span>`).join('')
+    : '<span style="font-size:9px;color:rgba(0,255,221,0.2)">aucun drop</span>';
+
+  const bossesKilledHtml = run.bossesKilled && run.bossesKilled.length > 0
+    ? run.bossesKilled.map(b => `<span class="rdm-buff-tag" style="border-color:${b.color}44;color:${b.color};background:${b.color}0a">💀 ${b.name} <span style="opacity:0.4">V${b.wave}</span></span>`).join('')
+    : '<span style="font-size:9px;color:rgba(0,255,221,0.2)">aucun</span>';
+
+  const specialHtml = s.specialPowers && s.specialPowers.length>0
+    ? s.specialPowers.map(sp=>`<span class="rdm-buff-tag" style="color:rgba(255,136,0,0.8);border-color:rgba(255,136,0,0.2)">${sp}</span>`).join('')
+    : '';
+
   body.innerHTML = `
     <div class="rdm-score-row">
       <div class="rdm-score-box"><div class="rdm-score-box-val">${run.score.toLocaleString()}</div><div class="rdm-score-box-label">SCORE</div></div>
@@ -3034,20 +3330,27 @@ function showRunDetail(timestamp) {
     </div>
     <div class="rdm-section">
       <div class="rdm-section-title">STATISTIQUES FINALES</div>
-      <div class="rdm-stat-row"><span>VIE MAX</span><span>${s.maxHp ?? '—'}</span></div>
+      <div class="rdm-stat-row"><span>VIE MAX</span><span>${s.maxHp ?? '—'} PV</span></div>
       <div class="rdm-stat-row"><span>DÉGÂTS</span><span>×${s.damage ?? '—'}</span></div>
       <div class="rdm-stat-row"><span>VITESSE</span><span>${s.speed ?? '—'}</span></div>
       <div class="rdm-stat-row"><span>CADENCE</span><span>${s.firerate ?? '—'} ticks</span></div>
-      <div class="rdm-stat-row"><span>ORBES</span><span>${s.orbs > 0 ? s.orbs : 'aucun'}</span></div>
+      <div class="rdm-stat-row"><span>ORBES</span><span>${s.orbs>0 ? `${s.orbs} (×${s.orbDmg||1} dmg, ×${s.orbSpd||1} spd)` : 'aucun'}</span></div>
+      <div class="rdm-stat-row"><span>GEL</span><span>${s.freeze || '0%'}</span></div>
+      <div class="rdm-stat-row"><span>VAMPIRISME</span><span>${s.vampStacks>0 ? `✓ ×${s.vampStacks}` : '—'}</span></div>
       <div class="rdm-stat-row"><span>MULT. SCORE</span><span>×${s.scoreMult ?? '1.0'}</span></div>
+      ${specialHtml ? `<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:4px">${specialHtml}</div>` : ''}
     </div>
     <div class="rdm-section">
-      <div class="rdm-section-title">BOSS DROPS</div>
+      <div class="rdm-section-title">BOSS VAINCUS</div>
+      <div class="rdm-buff-list">${bossesKilledHtml}</div>
+    </div>
+    <div class="rdm-section">
+      <div class="rdm-section-title">DROPS DE BOSS</div>
       <div class="rdm-buff-list">${bossHtml}</div>
     </div>
     <div class="rdm-section">
-      <div class="rdm-section-title">CAPACITÉS ACQUISES</div>
-      <div class="rdm-buff-list">${buffsHtml}</div>
+      <div class="rdm-section-title">BUILD — CAPACITÉS ACQUISES</div>
+      <div class="rdm-buff-list" style="gap:5px">${buffsHtml}</div>
     </div>
   `;
 
@@ -3070,21 +3373,6 @@ document.addEventListener('click', e => {
 renderScoreboard();
 
 // ─── END SCOREBOARD ──────────────────────────────────────────────
-
-// ── EXPOSE FUNCTIONS TO WINDOW (required for type="module") ──────
-window.startGame       = startGame;
-window.openBossFight   = openBossFight;
-window.replayOrRestart = replayOrRestart;
-window.goToMenu        = goToMenu;
-window.rerollBuffs     = rerollBuffs;
-window.resumeGame      = resumeGame;
-window.closeBossFight  = closeBossFight;
-window.startBossFight  = startBossFight;
-window.submitScore     = submitScore;
-window.toggleScoreboard= toggleScoreboard;
-window.clearScores     = clearScores;
-window.closeRunDetail  = closeRunDetail;
-window.showRunDetail   = showRunDetail;
 </script>
 </body>
 </html>
