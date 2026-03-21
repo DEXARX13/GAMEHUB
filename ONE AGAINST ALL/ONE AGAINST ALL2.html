@@ -3307,29 +3307,67 @@ let bfPicks = {};
 function getBFMax() { return bfSelectedStage || 10; }
 
 // All pickable buffs for practice (same pool as game)
+// Coût par rareté: common=1, rare=2, legendary=4, boss_drop=5
+function bfCost(b) {
+  if (b.rarity === 'boss_drop') return 5;
+  if (b.rarity === 'legendary') return 4;
+  if (b.rarity === 'rare')      return 2;
+  return 1; // common + infini
+}
+
 const BOSSFIGHT_BUFF_LIST = [
-  { id:'damage',    icon:'⚡', name:'PUISSANCE',    rare:false, apply: () => { state.buffs.damage += 0.5; } },
-  { id:'firerate',  icon:'🔥', name:'CADENCE',       rare:false, apply: () => { FIRE_RATE_BONUS += 0.4; } },
-  { id:'bulletspd', icon:'💫', name:'VÉLOCITÉ',       rare:false, apply: () => { BULLET_SPEED_BONUS += 3.5; } },
-  { id:'bigbullet', icon:'💥', name:'GROS CALIBRE',  rare:false, apply: () => { BIGGER_BULLETS = true; } },
-  { id:'backshot',  icon:'🔄', name:'TIR ARRIÈRE',   rare:false, apply: () => { BACK_SHOT = true; } },
-  { id:'freeze',    icon:'❄️', name:'GEL',            rare:false, apply: () => { FREEZE_CHANCE += 0.25; } },
-  { id:'speed',     icon:'💨', name:'VITESSE',        rare:false, apply: () => { state.buffs.speed += 0.2; } },
-  { id:'maxhp',     icon:'❤️', name:'VIE MAX',        rare:false, apply: () => { state.buffs.maxHp+=30; state.player.maxHp+=30; state.player.hp=Math.min(state.player.hp+20,state.player.maxHp); } },
-  { id:'regen',     icon:'🧬', name:'RÉGÉN. IMM.',    rare:false, apply: () => { state.player.hp = Math.min(state.player.hp+20,state.player.maxHp); } },
-  { id:'pasregen',  icon:'🩺', name:'REGEN PASSIVE',  rare:false, apply: () => { PASSIVE_REGEN = true; } },
-  { id:'shield',    icon:'🛡️', name:'BOUCLIER',       rare:false, apply: () => { SHIELD_ACTIVE = true; } },
-  { id:'iframes',   icon:'👻', name:'INTANGIB.',      rare:false, apply: () => { I_FRAME_BONUS += 20; } },
-  { id:'scoremult', icon:'✨', name:'MULTIPLIC.',     rare:false, apply: () => { SCORE_MULT += 0.5; } },
-  { id:'orbs',      icon:'🌀', name:'ORBE',           rare:false, apply: () => { ORB_COUNT += 1; } },
-  { id:'piercing',  icon:'🎯', name:'PERFORATION',    rare:true,  apply: () => { PIERCING = true; } },
-  { id:'triple',    icon:'🔱', name:'TRIPLE TIR',     rare:true,  apply: () => { TRIPLE_SHOT = Math.min(3, TRIPLE_SHOT+1); } },
-  { id:'explode',   icon:'💣', name:'EXPLOSION',      rare:true,  apply: () => { EXPLOSION_ON_KILL = true; } },
-  { id:'chain',     icon:'⚡', name:'CHAÎNE ÉCLAIR',  rare:true,  apply: () => { CHAIN_LIGHTNING = true; } },
-  { id:'shockwave', icon:'🌊', name:'ONDE CHOC',      rare:true,  apply: () => { SHOCKWAVE = true; } },
-  { id:'bullettime',icon:'⏱️', name:'BULLET TIME',    rare:true,  apply: () => { BULLET_TIME = true; } },
-  { id:'vampire',   icon:'🩸', name:'VAMPIRISME',     rare:true,  apply: () => { VAMPIRISM = true; } },
-  { id:'homing',    icon:'🔮', name:'ŒIL CHASSEUR',   rare:true,  apply: () => { HOMING = true; } },
+  // ── COMMUNS (coût 1) ──
+  { id:'damage',     rarity:'common',    icon:'⚡', name:'PUISSANCE',    apply: () => { state.buffs.damage += 0.5; } },
+  { id:'firerate',   rarity:'common',    icon:'🔥', name:'CADENCE',       apply: () => { FIRE_RATE_BONUS += 0.4; } },
+  { id:'bulletspd',  rarity:'common',    icon:'💫', name:'VÉLOCITÉ',       apply: () => { BULLET_SPEED_BONUS += 3.5; } },
+  { id:'speed',      rarity:'common',    icon:'💨', name:'VITESSE',        apply: () => { state.buffs.speed += 0.2; } },
+  { id:'turbo',      rarity:'common',    icon:'🌪️', name:'TURBO',          apply: () => { state.buffs.speed += 0.4; } },
+  { id:'maxhp',      rarity:'common',    icon:'❤️', name:'VIE MAX',        apply: () => { state.buffs.maxHp+=30; state.player.maxHp+=30; state.player.hp=Math.min(state.player.hp+20,state.player.maxHp); } },
+  { id:'regen',      rarity:'common',    icon:'🧬', name:'RÉGÉN. IMM.',    apply: () => { state.player.hp = Math.min(state.player.hp+20,state.player.maxHp); } },
+  { id:'pasregen',   rarity:'common',    icon:'🩺', name:'REGEN PASSIVE',  apply: () => { PASSIVE_REGEN = true; } },
+  { id:'shield',     rarity:'common',    icon:'🛡️', name:'BOUCLIER',       apply: () => { SHIELD_STACKS=Math.min(3,(SHIELD_STACKS||0)+1); SHIELD_ACTIVE=true; } },
+  { id:'iframes',    rarity:'common',    icon:'👻', name:'INTANGIB.',      apply: () => { I_FRAME_BONUS += 20; } },
+  { id:'freeze',     rarity:'common',    icon:'❄️', name:'GEL',            apply: () => { FREEZE_CHANCE=Math.min(0.75,FREEZE_CHANCE+0.25); } },
+  { id:'bigbullet',  rarity:'common',    icon:'💥', name:'GROS CALIBRE',   apply: () => { BIGGER_BULLETS=true; BIGGER_BULLETS_BONUS=(BIGGER_BULLETS_BONUS||4)+4; } },
+  { id:'backshot',   rarity:'common',    icon:'🔄', name:'TIR ARRIÈRE',    apply: () => { BACK_SHOT = true; } },
+  { id:'scoremult',  rarity:'common',    icon:'✨', name:'MULTIPLIC.',     apply: () => { SCORE_MULT += 0.5; } },
+  { id:'orb1',       rarity:'common',    icon:'🌀', name:'ORBE',           apply: () => { ORB_COUNT=Math.min(6,ORB_COUNT+1); } },
+  { id:'shrink',     rarity:'common',    icon:'🔵', name:'SILHOUETTE',     apply: () => { state.player.r=Math.max(5,state.player.r*0.75); } },
+  { id:'teleport',   rarity:'common',    icon:'📍', name:'TÉLÉPORT',      apply: () => { TELEPORT_UNLOCKED=true; } },
+  // Infinis coût 1
+  { id:'precision',  rarity:'common',    icon:'🎯', name:'PRÉCISION',     apply: () => { state.buffs.damage += 0.02; } },
+  { id:'endurance',  rarity:'common',    icon:'🫀', name:'ENDURANCE',     apply: () => { state.buffs.maxHp+=5; state.player.maxHp+=5; state.player.hp=Math.min(state.player.hp+5,state.player.maxHp); } },
+  { id:'reflexes',   rarity:'common',    icon:'⚙️', name:'RÉFLEXES',      apply: () => { FIRE_RATE_BONUS += 0.01; } },
+  { id:'toucher',    rarity:'common',    icon:'🔵', name:'TOUCHER',       apply: () => { BIGGER_BULLETS=true; BIGGER_BULLETS_BONUS=Math.max(4,(BIGGER_BULLETS_BONUS||4))+0.4; } },
+  // ── RARES (coût 2) ──
+  { id:'piercing',   rarity:'rare',      icon:'🎯', name:'PERFORATION',   apply: () => { PIERCING=true; } },
+  { id:'triple',     rarity:'rare',      icon:'🔱', name:'TRIPLE TIR',    apply: () => { TRIPLE_SHOT=Math.min(3,TRIPLE_SHOT+1); } },
+  { id:'explode',    rarity:'rare',      icon:'💣', name:'EXPLOSION',     apply: () => { EXPLOSION_ON_KILL=true; EXPLOSION_LEVEL=Math.min(3,(EXPLOSION_LEVEL||0)+1); } },
+  { id:'chain',      rarity:'rare',      icon:'⚡', name:'CHAÎNE ÉCLAIR', apply: () => { CHAIN_LIGHTNING=true; CHAIN_LEVEL=Math.min(3,(CHAIN_LEVEL||0)+1); } },
+  { id:'orb2',       rarity:'rare',      icon:'🌌', name:'DOUBLE ORBE',   apply: () => { ORB_COUNT=Math.min(6,ORB_COUNT+2); } },
+  { id:'orbdmg',     rarity:'rare',      icon:'💥', name:'ORBE+ DÉGÂTS', apply: () => { if(ORB_DAMAGE_MULT<2.5) ORB_DAMAGE_MULT+=0.5; } },
+  { id:'orbspd',     rarity:'rare',      icon:'🌀', name:'ORBE+ VITESSE', apply: () => { if(ORB_SPEED_MULT<2.5) ORB_SPEED_MULT+=0.5; } },
+  { id:'orbsize',    rarity:'rare',      icon:'🔮', name:'ORBE+ TAILLE',  apply: () => { if(ORB_SIZE_MULT<2.0) ORB_SIZE_MULT+=0.5; } },
+  { id:'shockwave',  rarity:'rare',      icon:'🌊', name:'ONDE CHOC',     apply: () => { SHOCKWAVE=true; } },
+  { id:'bullettime', rarity:'rare',      icon:'⏱️', name:'BULLET TIME',   apply: () => { BULLET_TIME=true; } },
+  { id:'vampire',    rarity:'rare',      icon:'🩸', name:'VAMPIRISME',    apply: () => { if(VAMPIRISM_STACKS<3){ VAMPIRISM=true; VAMPIRISM_STACKS++; } } },
+  { id:'familiar',   rarity:'rare',      icon:'🐾', name:'FAMILIER',      apply: () => { FAMILIAR_UNLOCKED=true; } },
+  // ── LÉGENDAIRES (coût 4) ──
+  { id:'lifestealer',rarity:'legendary', icon:'💜', name:'LIFE STEALER',  apply: () => { LIFE_STEALER=true; } },
+  { id:'homing',     rarity:'legendary', icon:'🔮', name:'ŒIL CHASSEUR',  apply: () => { HOMING=true; } },
+  { id:'minion',     rarity:'legendary', icon:'🐝', name:'ÉCLAT DE NUÉE', apply: () => { MINION_SPAWN=true; } },
+  // ── DROPS BOSS (coût 5) ──
+  { id:'armor',      rarity:'boss_drop', icon:'🦾', name:'ARMURE',         apply: () => { ARMOR=true; } },
+  { id:'surge',      rarity:'boss_drop', icon:'⚡', name:'DÉCHARGE',       apply: () => { SURGE_UNLOCKED=true; } },
+  { id:'homing_bd',  rarity:'boss_drop', icon:'🔮', name:'ŒIL CHASSEUR',   apply: () => { HOMING=true; } },
+  { id:'familiar_bd',rarity:'boss_drop', icon:'🐾', name:'FAMILIER',       apply: () => { FAMILIAR_UNLOCKED=true; } },
+  { id:'minion_bd',  rarity:'boss_drop', icon:'🐝', name:'ÉCLAT DE NUÉE',  apply: () => { MINION_SPAWN=true; } },
+  { id:'web',        rarity:'boss_drop', icon:'🕸️', name:'FILET',           apply: () => { WEB_TRAIL=true; } },
+  { id:'fracture',   rarity:'boss_drop', icon:'💠', name:'FRACTURE',        apply: () => { FRACTURE=true; } },
+  { id:'surchauffe', rarity:'boss_drop', icon:'🔥', name:'SURCHAUFFE',      apply: () => { SURCHAUFFE=true; } },
+  { id:'ombre',      rarity:'boss_drop', icon:'🌒', name:'OMBRE',           apply: () => { SHADOW_DODGE=true; } },
+  { id:'resurrection',rarity:'boss_drop',icon:'💚', name:'RÉSURRECTION',   apply: () => { RESURRECTION=true; } },
+  { id:'clone',      rarity:'boss_drop', icon:'🪞', name:'CLONE',           apply: () => { CLONE_ACTIVE=true; CLONE_TIMER=480; } },
 ];
 
 function openBossFight() {
@@ -3412,11 +3450,19 @@ function renderBFStageList() {
     btn.onclick = () => {
       bfSelectedStage = stage;
       // Trim picks if over new max
+      // Trim picks if over new budget (remove costliest first)
       while (bfPicksTotal() > getBFMax()) {
-        const keys = Object.keys(bfPicks);
-        if (!keys.length) break;
-        bfPicks[keys[keys.length-1]]--;
-        if (bfPicks[keys[keys.length-1]] <= 0) delete bfPicks[keys[keys.length-1]];
+        const entries = Object.entries(bfPicks).filter(([,v])=>v>0);
+        if (!entries.length) break;
+        // Find most expensive pick to remove first
+        entries.sort((a,b2) => {
+          const ca = bfCost(BOSSFIGHT_BUFF_LIST.find(x=>x.id===a[0])||{});
+          const cb = bfCost(BOSSFIGHT_BUFF_LIST.find(x=>x.id===b2[0])||{});
+          return cb - ca;
+        });
+        const [id] = entries[0];
+        bfPicks[id]--;
+        if (bfPicks[id] <= 0) delete bfPicks[id];
       }
       renderBFStageList();
       renderBFBuffGrid();
@@ -3444,50 +3490,88 @@ function updateBFStagePreview() {
 function renderBFBuffGrid() {
   const grid = document.getElementById('bossfight-buff-grid');
   grid.innerHTML = '';
-  const total = bfPicksTotal();
-  BOSSFIGHT_BUFF_LIST.forEach(b => {
-    const count = bfPicks[b.id] || 0;
-    const maxed = total >= getBFMax() && count === 0;
-    const tile = document.createElement('div');
-    tile.className = 'pbt' + (b.rare ? ' pbt-rare' : '') + (count > 0 ? ' pbt-on' : '') + (maxed ? ' pbt-disabled' : '');
-    const poolEntry2 = BUFF_POOL.find(p => p.id === b.id);
-    const maxS2 = poolEntry2 && poolEntry2.maxStacks ? poolEntry2.maxStacks : null;
-    const atMax = maxS2 && count >= maxS2;
-    tile.innerHTML = `
-      <span class="pbt-icon">${b.icon}</span>
-      <span class="pbt-name">${b.name}</span>
-      ${count > 0 ? `<span class="pbt-badge" style="background:${atMax?'rgba(255,34,68,0.6)':'rgba(0,0,0,0.55)'}">×${count}${atMax?'🔒':''}</span>` : ''}`;
-    if (atMax) tile.classList.add('pbt-disabled'); tile.style.cursor = atMax ? 'not-allowed' : '';
-    if (!maxed) {
-      tile.onclick = (e) => {
-        e.stopPropagation();
-        const cur = bfPicks[b.id] || 0;
-        const tot = bfPicksTotal();
-        // Find maxStacks from main BUFF_POOL
-        const poolEntry = BUFF_POOL.find(p => p.id === b.id);
-        const maxS = poolEntry && poolEntry.maxStacks ? poolEntry.maxStacks : 99;
-        if (e.shiftKey && cur > 0) {
-          bfPicks[b.id] = cur - 1;
-          if (bfPicks[b.id] <= 0) delete bfPicks[b.id];
-        } else if (tot < getBFMax() && cur < maxS) {
-          bfPicks[b.id] = cur + 1;
-        }
-        renderBFBuffGrid();
-        updateBFCounter();
-        updateBFStartBtn();
-      };
-    }
-    grid.appendChild(tile);
+  const spent = bfPicksTotal();
+  const budget = getBFMax();
+
+  // Color per rarity
+  const rarityColor = { common:'rgba(0,255,221,0.7)', rare:'rgba(204,68,255,0.8)', legendary:'rgba(255,215,0,0.9)', boss_drop:'rgba(255,68,68,0.9)' };
+  const raritySuffix = { common:'', rare:' ✦', legendary:' ★★', boss_drop:' 💀' };
+
+  // Group by rarity for display
+  const groups = [
+    { label:'COMMUNS — coût 1pt', items: BOSSFIGHT_BUFF_LIST.filter(b=>b.rarity==='common') },
+    { label:'RARES — coût 2pts', items: BOSSFIGHT_BUFF_LIST.filter(b=>b.rarity==='rare') },
+    { label:'LÉGENDAIRES — coût 4pts', items: BOSSFIGHT_BUFF_LIST.filter(b=>b.rarity==='legendary') },
+    { label:'DROPS BOSS — coût 5pts', items: BOSSFIGHT_BUFF_LIST.filter(b=>b.rarity==='boss_drop') },
+  ];
+
+  groups.forEach(group => {
+    if (!group.items.length) return;
+    // Section header
+    const header = document.createElement('div');
+    header.style.cssText = 'grid-column:1/-1;font-family:Orbitron,sans-serif;font-size:8px;font-weight:900;letter-spacing:2px;color:rgba(0,255,221,0.3);margin-top:8px;margin-bottom:2px';
+    header.textContent = group.label;
+    grid.appendChild(header);
+
+    group.items.forEach(b => {
+      const count = bfPicks[b.id] || 0;
+      const cost = bfCost(b);
+      const cantAfford = spent + cost > budget && count === 0;
+      const poolEntry = BUFF_POOL.find(p => p.id === b.id) || {};
+      const maxS = poolEntry.maxStacks || 99;
+      const atMax = maxS !== null && count >= maxS;
+      const disabled = cantAfford || atMax;
+      const col = rarityColor[b.rarity] || rarityColor.common;
+
+      const tile = document.createElement('div');
+      tile.className = 'pbt' + (b.rarity==='rare'?' pbt-rare':'') + (count>0?' pbt-on':'') + (disabled?' pbt-disabled':'');
+      if (b.rarity==='legendary') { tile.style.borderColor='rgba(255,215,0,0.3)'; tile.style.color='rgba(255,215,0,0.8)'; }
+      if (b.rarity==='boss_drop') { tile.style.borderColor='rgba(255,68,68,0.35)'; tile.style.color='rgba(255,100,100,0.9)'; }
+
+      tile.innerHTML = `
+        <span class="pbt-icon">${b.icon}</span>
+        <span class="pbt-name">${b.name}${raritySuffix[b.rarity]||''}</span>
+        <span style="font-size:7px;opacity:0.4;display:block">${cost}pt${cost>1?'s':''}</span>
+        ${count>0?`<span class="pbt-badge" style="background:${atMax?'rgba(255,34,68,0.6)':'rgba(0,0,0,0.55)'}">×${count}${atMax?'🔒':''}</span>`:''}`;
+
+      tile.style.cursor = disabled ? 'not-allowed' : '';
+      if (!disabled) {
+        tile.onclick = (e) => {
+          e.stopPropagation();
+          const cur = bfPicks[b.id] || 0;
+          const tot = bfPicksTotal();
+          const ms = (BUFF_POOL.find(p=>p.id===b.id)||{}).maxStacks || 99;
+          if (e.shiftKey && cur > 0) {
+            bfPicks[b.id] = cur - 1;
+            if (bfPicks[b.id] <= 0) delete bfPicks[b.id];
+          } else if (tot + cost <= budget && cur < ms) {
+            bfPicks[b.id] = cur + 1;
+          }
+          renderBFBuffGrid();
+          updateBFCounter();
+          updateBFStartBtn();
+        };
+      }
+      grid.appendChild(tile);
+    });
   });
-  // Add hint
+
+  // Hint
   const hint = document.createElement('div');
-  hint.style.cssText = 'grid-column:1/-1;font-size:8px;color:rgba(0,255,221,0.2);letter-spacing:1px;margin-top:6px;text-align:center';
+  hint.style.cssText = 'grid-column:1/-1;font-size:8px;color:rgba(0,255,221,0.2);letter-spacing:1px;margin-top:8px;text-align:center';
   hint.textContent = 'CLIC = ajouter · SHIFT+CLIC = retirer';
   grid.appendChild(hint);
 }
 
 function bfPicksTotal() {
-  return Object.values(bfPicks).reduce((a, b) => a + b, 0);
+  // Each pick costs based on rarity
+  let total = 0;
+  Object.entries(bfPicks).forEach(([id, count]) => {
+    const buff = BOSSFIGHT_BUFF_LIST.find(b => b.id === id);
+    const cost = buff ? bfCost(buff) : 1;
+    total += count * cost;
+  });
+  return total;
 }
 
 function updateBFCounter() {
