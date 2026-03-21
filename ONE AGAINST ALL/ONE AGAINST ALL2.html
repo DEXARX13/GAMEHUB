@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <title>ONE AGAINST ALL</title>
+<!-- Firebase SDK -->
+<script type="module" src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"></script>
+<script type="module" src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
 
@@ -1269,7 +1272,7 @@
       </div>
       <div id="bossfight-buff-col">
         <div class="bf-col-title">POUVOIRS DE DÉPART</div>
-        <div id="bossfight-buff-counter"><span class="used">0</span> <span class="total">/ 10 SÉLECTIONNÉS</span></div>
+        <div id="bossfight-buff-counter"><span class="used">0</span> <span class="total">/ 3 SÉLECTIONNÉS</span></div>
         <div id="bossfight-buff-grid"></div>
       </div>
     </div>
@@ -1515,7 +1518,7 @@ function startGame() {
   CHAIN_LIGHTNING = false; SHOCKWAVE = false;
   BULLET_TIME = false; FREEZE_CHANCE = 0; BACK_SHOT = false;
   ARMOR = false; HOMING = false; MINION_SPAWN = false;
-  boss = null; allies = []; familiars = [];
+  boss = null; allies = []; familiars = []; bossDropActive = false;
   RESURRECTION = false; WEB_TRAIL=false; FRACTURE=false;
   SURCHAUFFE=false; surchauffeLevel=0; surchauffeTimer=0;
   DARK_VISION=false; SHADOW_DODGE=false; CLONE_ACTIVE=false; CLONE_TIMER=0;
@@ -1911,7 +1914,7 @@ function update() {
   }
 
   // Wave clear
-  if (!BOSSFIGHT_MODE && !boss && state.enemiesToSpawn === 0 && state.enemies.length === 0) {
+  if (!BOSSFIGHT_MODE && !boss && !bossDropActive && state.enemiesToSpawn === 0 && state.enemies.length === 0) {
     const nextWave = state.wave + 1;
     if (isBossWave(nextWave)) {
       state.wave = nextWave;
@@ -2187,12 +2190,12 @@ const BOSS_DEFS = {
       });
       if(!b.splitDone && b.hp<b.maxHp*0.5){
         b.splitDone=true;
-        const tier=Math.floor(state.wave/10);
+        const tier2 = b.scalingTier !== undefined ? b.scalingTier : Math.floor(state.wave/10);
         for(let i=0;i<2;i++){
           const a=(i/2)*Math.PI*2;
           state.enemies.push({x:b.x+Math.cos(a)*60,y:b.y+Math.sin(a)*60,r:18,
             hp:Math.round(b.maxHp*0.2),maxHp:Math.round(b.maxHp*0.2),speed:2.2,
-            color:'#0055aa',score:50,type:'fast',dmgMult:b.dmgMult||1});
+            color:'#0055aa',score:50,type:'fast',dmgMult:1+tier2*0.2});
         }
         particles(b.x,b.y,'#0088ff',30);
       }
@@ -2316,12 +2319,14 @@ const BOSS_DEFS = {
         else if(side===1){ex=W+15;ey=Math.random()*H;}
         else if(side===2){ex=Math.random()*W;ey=H+15;}
         else{ex=-15;ey=Math.random()*H;}
-        const tier=Math.floor(state.wave/10);
-        const hpS=1+tier*0.6;
+        const tier = b.scalingTier !== undefined ? b.scalingTier : Math.floor(state.wave/10);
+        const hpS=1+tier*0.4;
         state.enemies.push({x:ex,y:ey,r:9,
-          hp:Math.round((2+state.wave*0.4)*hpS),maxHp:Math.round((2+state.wave*0.4)*hpS),
-          speed:(1.5+state.wave*0.06)*(1+tier*0.12),color:'#44ff88',score:5,
-          type:'melee',dmgMult:1+tier*0.25,undead:true});
+          hp:Math.round((2+Math.min(state.wave,30)*0.3)*hpS),
+          maxHp:Math.round((2+Math.min(state.wave,30)*0.3)*hpS),
+          speed:(1.5+Math.min(state.wave,30)*0.04)*(1+tier*0.1),
+          color:'#44ff88',score:5,
+          type:'melee',dmgMult:1+tier*0.2,undead:true});
         particles(ex,ey,'#44ff88',8);
       }
     }
@@ -2443,6 +2448,7 @@ const BOSS_DEFS = {
 };
 
 let boss = null; // active boss object
+let bossDropActive = false; // prevents wave-clear during drop popup
 let ARMOR = false, HOMING = false, MINION_SPAWN = false;
 let RESURRECTION = false;
 let WEB_TRAIL = false;
@@ -2483,11 +2489,23 @@ function startBossWave(forcedKey = null) {
   // Pick boss
   const key = forcedKey || getBossKeyForWave(state.wave);
   const def = BOSS_DEFS[key];
-  const hpTotal = def.hpBase + state.wave * 4;
+
+  // In Boss Fight mode: only scale HP (player chose the stage for HP challenge)
+  // Speed/damage stay reasonable — capped at tier 3 equivalent
+  const rawTier = Math.floor(state.wave / 10);
+  const scalingTier = BOSSFIGHT_MODE ? Math.min(3, rawTier) : rawTier;
+  const hpMult = BOSSFIGHT_MODE ? (state.wave / 10) : (1 + rawTier * 0.5);
+  const hpTotal = Math.round(def.hpBase * hpMult + state.wave * 5);
+  const speedMult = 1 + scalingTier * 0.12;
+  const dmgMult   = 1 + scalingTier * 0.2;
+
   boss = {
     ...def,
     x: W/2, y: -def.r,
     hp: hpTotal, maxHp: hpTotal,
+    speed: def.speed * speedMult,
+    dmgMult,
+    scalingTier, // used by summon-based bosses
     def,
   };
   def.initAI(boss);
@@ -2603,7 +2621,9 @@ function updateBoss() {
     if (!state.bossesKilled) state.bossesKilled=[];
     state.bossesKilled.push({ name:boss.def.name, color:boss.def.color, wave:state.wave });
     document.getElementById('boss-bar-wrapper').classList.remove('visible');
-    showBossDrop(boss.def);
+    const bfDrop = rollBossDrop(boss.def);
+    if (bfDrop) showBossDrop(boss.def, bfDrop);
+    else onBossDefeatedNoDrop();
     boss = null;
   }
 }
@@ -2638,14 +2658,42 @@ function updateAllies() {
   });
 }
 
-function showBossDrop(def) {
+function rollBossDrop(def) {
+  const roll = Math.random();
+  const key = Object.keys(BOSS_DEFS).find(k => BOSS_DEFS[k] === def) || 'titan';
+  const tables = {
+    titan:      [ {chance:0.20, drop:{id:'armor',       icon:'🦾', name:'ARMURE',           desc:'Dégâts reçus -30%.',                        apply:()=>{ ARMOR=true; }}},
+                   {chance:0.15, drop:{id:'surge',       icon:'⚡', name:'DÉCHARGE',          desc:'Kills chargent un super-tir (×3 dégâts).',  apply:()=>{ SURGE_UNLOCKED=true; }}} ],
+    spectre:    [ {chance:0.10, drop:{id:'teleport',    icon:'📍', name:'TÉLÉPORT',           desc:'Touche E : TP à la souris (CD 4s).',        apply:()=>{ TELEPORT_UNLOCKED=true; }}},
+                   {chance:0.15, drop:{id:'homing',      icon:'🔮', name:'ŒIL DU CHASSEUR',   desc:'Projectiles légèrement guidés.',            apply:()=>{ HOMING=true; }}} ],
+    swarm:      [ {chance:0.50, drop:{id:'familiar',    icon:'🐾', name:'FAMILIER',           desc:'Touche A : invoque un familier (max 3).',  apply:()=>{ FAMILIAR_UNLOCKED=true; }}},
+                   {chance:0.15, drop:{id:'minion',      icon:'🐝', name:'ÉCLAT DE NUÉE',     desc:'20% chance de spawner un allié au kill.',  apply:()=>{ MINION_SPAWN=true; }}} ],
+    araignee:   [ {chance:0.25, drop:{id:'web',         icon:'🕸️', name:'FILET',              desc:'Orbes laissent une traîne ralentissante.',  apply:()=>{ WEB_TRAIL=true; }}} ],
+    conducteur: [ {chance:0.20, drop:{id:'surge',       icon:'⚡', name:'DÉCHARGE',          desc:'Kills chargent un super-tir (×3 dégâts).',  apply:()=>{ SURGE_UNLOCKED=true; }}} ],
+    leviathan:  [ {chance:0.20, drop:{id:'fracture',    icon:'💠', name:'FRACTURE',           desc:"Balles se divisent en 3 à l'impact.",       apply:()=>{ FRACTURE=true; }}} ],
+    berserk:    [ {chance:0.25, drop:{id:'surchauffe',  icon:'🔥', name:'SURCHAUFFE',         desc:'Dégâts +10%/s de tir continu (max ×3).',   apply:()=>{ SURCHAUFFE=true; }}} ],
+    eclipse:    [ {chance:0.25, drop:{id:'ombre',       icon:'🌒', name:'OMBRE',              desc:"25% de chance d'esquiver un projectile.",   apply:()=>{ SHADOW_DODGE=true; }}} ],
+    necromant:  [ {chance:0.35, drop:{id:'resurrection',icon:'💚', name:'RÉSURRECTION',       desc:'Absorbe une mort (usage unique).',           apply:()=>{ RESURRECTION=true; }}} ],
+    mime:       [ {chance:0.40, drop:{id:'clone',       icon:'🪞', name:'CLONE',              desc:'Fantôme miroir de vous pendant 8s.',        apply:()=>{ CLONE_ACTIVE=true; CLONE_TIMER=480; }}} ],
+  };
+  const table = tables[key] || [];
+  let cumul = 0;
+  for (const entry of table) {
+    cumul += entry.chance;
+    if (roll < cumul) return entry.drop;
+  }
+  return null; // no drop
+}
+
+function showBossDrop(def, drop=null) {
   state.phase = 'bossdrop';
+  bossDropActive = true;
   // Clear everything so wave-clear condition can't fire
   state.enemiesToSpawn = 0;
   state.enemies = [];
   state.enemyBullets = [];
 
-  const drop = def.drop;
+  if (!drop) drop = def.drop; // fallback
   const screen = document.getElementById('boss-drop-screen');
   const title = document.getElementById('boss-drop-title');
   const wrapper = document.getElementById('boss-drop-card-wrapper');
@@ -2662,6 +2710,7 @@ function showBossDrop(def) {
     recordBuff(drop);
     state.player.hp = state.player.maxHp;
     document.getElementById('boss-drop-screen').classList.add('hidden');
+    bossDropActive = false;
     if (BOSSFIGHT_MODE) {
       // Victory in practice — show congrats then return to practice screen
       state.phase = 'dead';
@@ -2680,6 +2729,25 @@ function showBossDrop(def) {
   };
   wrapper.appendChild(card);
   screen.classList.remove('hidden');
+}
+
+function onBossDefeatedNoDrop() {
+  bossDropActive = false;
+  state.player.hp = state.player.maxHp;
+  if (BOSSFIGHT_MODE) {
+    state.phase = 'dead';
+    document.getElementById('death-score').textContent = state.score.toLocaleString();
+    document.getElementById('go-wave').textContent = '⚔ BOSS VAINCU';
+    document.getElementById('go-kills').textContent = state.kills;
+    document.getElementById('go-bossfight-btn').style.display = '';
+    const sub = document.querySelector('#gameover-screen .overlay-sub');
+    if (sub) { sub.textContent = 'VICTOIRE !'; sub.style.color = 'var(--neon-purple)'; }
+    document.getElementById('gameover-screen').classList.remove('hidden');
+  } else {
+    state.wave++;
+    state.phase = 'playing';
+    startWave();
+  }
 }
 
 // ─── END BOSS SYSTEM ────────────────────────────────────────────
@@ -2736,29 +2804,70 @@ function showBuffs() {
   document.getElementById('buff-screen').classList.remove('hidden');
 }
 
+// ── Helper: how many times has the player picked this buff
+function getBuffCount(id) {
+  const f = acquiredBuffs.find(b => b.id === id);
+  return f ? f.count : 0;
+}
+
+// ── Helper: is buff at max stacks?
+function isBuffMaxed(b) {
+  if (!b.maxStacks) return false;
+  return getBuffCount(b.id) >= b.maxStacks;
+}
+
+// ── Helper: get description (supports function or string)
+function getBuffDesc(b) {
+  const n = getBuffCount(b.id) + 1;
+  return typeof b.desc === 'function' ? b.desc(n) : b.desc;
+}
+
 function renderBuffCards() {
-  // Separate rare from common
-  const common = BUFF_POOL.filter(b => !b.rare);
-  const rare   = BUFF_POOL.filter(b => b.rare);
-  // Shuffle both pools
-  const shuffle = arr => { for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];}return arr; };
-  shuffle(common); shuffle(rare);
-  // 1 rare guaranteed, 2 commons (or 3 randoms if not enough)
-  let chosen = [];
-  if (rare.length && common.length >= 2) {
-    chosen = [rare[0], common[0], common[1]];
-    shuffle(chosen);
-  } else {
-    const all = shuffle([...BUFF_POOL]);
-    chosen = all.slice(0,3);
+  const shuffle = arr => {
+    for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];}
+    return arr;
+  };
+
+  // Filter maxed buffs + contextual exclusions
+  const eligible = BUFF_POOL.filter(b => {
+    if (isBuffMaxed(b)) return false;
+    if (['orbdmg','orbspd','orbsize'].includes(b.id) && ORB_COUNT === 0) return false;
+    if (b.id === 'vampire' && VAMPIRISM_STACKS >= 3) return false;
+    return true;
+  });
+
+  const commons    = shuffle(eligible.filter(b => !b.rare));
+  const rares      = shuffle(eligible.filter(b => b.rare));
+
+  // Weights: 70% common, 30% rare per slot
+  const pool_c = [...commons], pool_r = [...rares];
+  function pickOne() {
+    if (pool_r.length && Math.random() < 0.30) return pool_r.shift();
+    if (pool_c.length) return pool_c.shift();
+    if (pool_r.length) return pool_r.shift();
+    return null;
+  }
+
+  const chosen = [];
+  for (let i = 0; i < 3; i++) {
+    const b = pickOne();
+    if (b) chosen.push(b);
   }
 
   const container = document.getElementById('buff-cards');
   container.innerHTML = '';
   chosen.forEach(b => {
+    const stacks = getBuffCount(b.id);
     const card = document.createElement('div');
     card.className = 'buff-card' + (b.rare ? ' rare' : '');
-    card.innerHTML = `<span class="buff-icon">${b.icon}</span><div class="buff-name">${b.name}${b.rare ? ' ★' : ''}</div><div class="buff-desc">${b.desc}</div>`;
+    card.style.position = 'relative';
+    const stackBadge = stacks > 0
+      ? `<span style="position:absolute;top:5px;right:6px;font-family:Orbitron,sans-serif;font-size:9px;font-weight:900;color:var(--neon-cyan)">×${stacks+1}</span>`
+      : '';
+    const maxInfo = b.maxStacks
+      ? `<span style="font-size:8px;opacity:0.4"> (max ${b.maxStacks})</span>`
+      : '';
+    card.innerHTML = `${stackBadge}<span class="buff-icon">${b.icon}</span><div class="buff-name">${b.name}${b.rare?' ★':''}${maxInfo}</div><div class="buff-desc">${getBuffDesc(b)}</div>`;
     card.onclick = () => {
       b.apply();
       recordBuff(b);
@@ -2772,7 +2881,9 @@ function renderBuffCards() {
   const btn = document.getElementById('reroll-btn');
   const cnt = document.getElementById('reroll-count');
   btn.disabled = rerollsLeft <= 0;
-  cnt.textContent = rerollsLeft > 0 ? `${rerollsLeft} reroll${rerollsLeft>1?'s':''} disponible${rerollsLeft>1?'s':''}` : 'Aucun reroll restant';
+  cnt.textContent = rerollsLeft > 0
+    ? `${rerollsLeft} reroll${rerollsLeft>1?'s':''} disponible${rerollsLeft>1?'s':''}`
+    : 'Aucun reroll restant';
 }
 
 // --- DRAW ---
@@ -3122,7 +3233,8 @@ let BOSSFIGHT_MODE = false;
 let bfSelectedBoss = null;
 let bfSelectedStage = 10; // default stage 10
 let bfPicks = {};
-const BOSSFIGHT_MAX = 10;
+// 1 power per wave before the boss (stage 10 = 10 powers, stage 100 = 100 powers)
+function getBFMax() { return bfSelectedStage || 10; }
 
 // All pickable buffs for practice (same pool as game)
 const BOSSFIGHT_BUFF_LIST = [
@@ -3229,7 +3341,15 @@ function renderBFStageList() {
       <span class="bf-stage-hp">${hpText}</span>`;
     btn.onclick = () => {
       bfSelectedStage = stage;
+      // Trim picks if over new max
+      while (bfPicksTotal() > getBFMax()) {
+        const keys = Object.keys(bfPicks);
+        if (!keys.length) break;
+        bfPicks[keys[keys.length-1]]--;
+        if (bfPicks[keys[keys.length-1]] <= 0) delete bfPicks[keys[keys.length-1]];
+      }
       renderBFStageList();
+      renderBFBuffGrid();
       updateBFStagePreview();
       updateBFStartBtn();
     };
@@ -3247,7 +3367,8 @@ function updateBFStagePreview() {
   const hpText = bfSelectedBoss
     ? getBossHpForStage(bfSelectedStage, BOSS_DEFS[bfSelectedBoss]).toLocaleString() + ' PV'
     : `×${bfSelectedStage/10*100}% PV de base`;
-  el.innerHTML = `<strong style="color:${color}">ÉTAGE ${bfSelectedStage}</strong>${label}<br><span style="color:${color};opacity:0.8">${hpText}</span>`;
+  const powers = BF_STAGE_POWERS[bfSelectedStage] || 3;
+  el.innerHTML = `<strong style="color:${color}">ÉTAGE ${bfSelectedStage}</strong>${label}<br><span style="color:${color};opacity:0.8">${hpText}</span><br><span style="color:rgba(0,255,221,0.6);font-size:8px">${powers} POUVOIRS</span>`;
 }
 
 function renderBFBuffGrid() {
@@ -3256,23 +3377,29 @@ function renderBFBuffGrid() {
   const total = bfPicksTotal();
   BOSSFIGHT_BUFF_LIST.forEach(b => {
     const count = bfPicks[b.id] || 0;
-    const maxed = total >= BOSSFIGHT_MAX && count === 0;
+    const maxed = total >= getBFMax() && count === 0;
     const tile = document.createElement('div');
     tile.className = 'pbt' + (b.rare ? ' pbt-rare' : '') + (count > 0 ? ' pbt-on' : '') + (maxed ? ' pbt-disabled' : '');
+    const poolEntry2 = BUFF_POOL.find(p => p.id === b.id);
+    const maxS2 = poolEntry2 && poolEntry2.maxStacks ? poolEntry2.maxStacks : null;
+    const atMax = maxS2 && count >= maxS2;
     tile.innerHTML = `
       <span class="pbt-icon">${b.icon}</span>
       <span class="pbt-name">${b.name}</span>
-      ${count > 0 ? `<span class="pbt-badge">×${count}</span>` : ''}`;
+      ${count > 0 ? `<span class="pbt-badge" style="background:${atMax?'rgba(255,34,68,0.6)':'rgba(0,0,0,0.55)'}">×${count}${atMax?'🔒':''}</span>` : ''}`;
+    if (atMax) tile.classList.add('pbt-disabled'); tile.style.cursor = atMax ? 'not-allowed' : '';
     if (!maxed) {
       tile.onclick = (e) => {
         e.stopPropagation();
         const cur = bfPicks[b.id] || 0;
         const tot = bfPicksTotal();
+        // Find maxStacks from main BUFF_POOL
+        const poolEntry = BUFF_POOL.find(p => p.id === b.id);
+        const maxS = poolEntry && poolEntry.maxStacks ? poolEntry.maxStacks : 99;
         if (e.shiftKey && cur > 0) {
-          // Shift+click to remove one
           bfPicks[b.id] = cur - 1;
           if (bfPicks[b.id] <= 0) delete bfPicks[b.id];
-        } else if (tot < BOSSFIGHT_MAX) {
+        } else if (tot < getBFMax() && cur < maxS) {
           bfPicks[b.id] = cur + 1;
         }
         renderBFBuffGrid();
@@ -3296,7 +3423,8 @@ function bfPicksTotal() {
 function updateBFCounter() {
   const used = bfPicksTotal();
   const el = document.getElementById('bossfight-buff-counter');
-  el.innerHTML = `<span class="used" style="color:${used>=BOSSFIGHT_MAX?'var(--neon-orange)':'var(--neon-cyan)'}">${used}</span> <span class="total">/ ${BOSSFIGHT_MAX} SÉLECTIONNÉS</span>`;
+  const bfMax = getBFMax();
+  el.innerHTML = `<span class="used" style="color:${used>=bfMax?'var(--neon-orange)':'var(--neon-cyan)'}">${used}</span> <span class="total">/ ${bfMax} SÉLECTIONNÉS</span>`;
 }
 
 function updateBFStartBtn() {
@@ -3305,7 +3433,7 @@ function updateBFStartBtn() {
   if (bfSelectedBoss && bfSelectedStage) {
     const def = BOSS_DEFS[bfSelectedBoss];
     const hp = getBossHpForStage(bfSelectedStage, def);
-    btn.textContent = `▶ LANCER — ${def.name} ÉT.${bfSelectedStage} (${hp.toLocaleString()} PV)`;
+    btn.textContent = `▶ LANCER — ${def.name} · ÉT.${bfSelectedStage} · ${hp.toLocaleString()} PV · ${getBFMax()} pouvoirs`;
   } else {
     btn.textContent = '▶ LANCER';
   }
@@ -3340,7 +3468,7 @@ function startBossFight() {
   CHAIN_LIGHTNING = false; SHOCKWAVE = false;
   BULLET_TIME = false; FREEZE_CHANCE = 0; BACK_SHOT = false;
   ARMOR = false; HOMING = false; MINION_SPAWN = false;
-  boss = null; allies = []; familiars = [];
+  boss = null; allies = []; familiars = []; bossDropActive = false;
   RESURRECTION = false; WEB_TRAIL=false; FRACTURE=false;
   SURCHAUFFE=false; surchauffeLevel=0; surchauffeTimer=0;
   DARK_VISION=false; SHADOW_DODGE=false; CLONE_ACTIVE=false; CLONE_TIMER=0;
@@ -3390,19 +3518,114 @@ function goToMenu() {
 
 // ─── END PRACTICE MODE ───────────────────────────────────────────
 
-// ─── SCOREBOARD SYSTEM ──────────────────────────────────────────
+// ─── SCOREBOARD SYSTEM (Firebase Firestore) ─────────────────────
 
+// Firebase init via ESM module — loaded async
+const MAX_SCORES = 20;
+let db = null; // Firestore instance, set once SDK loads
+let _cachedScores = []; // local cache for display
+
+// Init Firebase when DOM ready
+(async function initFirebase() {
+  try {
+    const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js');
+    const { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, serverTimestamp }
+      = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js');
+
+    const app = initializeApp({
+      apiKey: "AIzaSyCsfxTIrn56ab5VYKx9hzLxG8WW3Hd0hgA",
+      authDomain: "gamehub-e6aef.firebaseapp.com",
+      projectId: "gamehub-e6aef",
+      storageBucket: "gamehub-e6aef.firebasestorage.app",
+      messagingSenderId: "26866419223",
+      appId: "1:26866419223:web:ec644ea65e44d3feaffe52"
+    });
+
+    db = getFirestore(app);
+    window._fbAddDoc = addDoc;
+    window._fbCollection = collection;
+    window._fbQuery = query;
+    window._fbGetDocs = getDocs;
+    window._fbOrderBy = orderBy;
+    window._fbLimit = limit;
+    window._fbServerTimestamp = serverTimestamp;
+
+    console.log('[OAA] Firebase connected');
+    // Load scores on init
+    await fetchScores();
+    renderScoreboard();
+  } catch(e) {
+    console.warn('[OAA] Firebase init failed, falling back to localStorage', e);
+    _cachedScores = loadLocalScores();
+    renderScoreboard();
+  }
+})();
+
+// ── Local fallback ─────────────────────────────────────────────
 const SB_KEY = 'oaa_scores_v1';
-const MAX_SCORES = 10;
 
-function loadScores() {
+function loadLocalScores() {
   try { return JSON.parse(localStorage.getItem(SB_KEY) || '[]'); }
   catch(e) { return []; }
 }
-
-function saveScores(arr) {
+function saveLocalScore(run) {
+  const arr = loadLocalScores();
+  arr.push(run);
+  arr.sort((a,b) => b.score - a.score);
+  arr.splice(MAX_SCORES);
   localStorage.setItem(SB_KEY, JSON.stringify(arr));
 }
+
+// ── Firebase fetch ─────────────────────────────────────────────
+async function fetchScores() {
+  if (!db) return;
+  try {
+    const q = window._fbQuery(
+      window._fbCollection(db, 'oaa_scores'),
+      window._fbOrderBy('score', 'desc'),
+      window._fbLimit(MAX_SCORES)
+    );
+    const snap = await window._fbGetDocs(q);
+    _cachedScores = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+  } catch(e) {
+    console.warn('[OAA] fetchScores failed', e);
+    _cachedScores = loadLocalScores();
+  }
+}
+
+// ── Save score ─────────────────────────────────────────────────
+async function saveScore(run) {
+  // Always save locally as fallback
+  saveLocalScore(run);
+
+  if (!db) return;
+  try {
+    const payload = {
+      name:       run.name,
+      score:      run.score,
+      wave:       run.wave,
+      kills:      run.kills,
+      date:       run.date,
+      playtime:   run.playtime || 0,
+      timestamp:  run.timestamp,
+      createdAt:  window._fbServerTimestamp(),
+      game:       'ONE AGAINST ALL',
+      // Build details
+      stats:       run.stats       || {},
+      buffs:       run.buffs       || [],
+      bossDrops:   run.bossDrops   || [],
+      bossesKilled:run.bossesKilled|| [],
+    };
+    await window._fbAddDoc(window._fbCollection(db, 'oaa_scores'), payload);
+    console.log('[OAA] Score saved to Firestore');
+    await fetchScores();
+    renderScoreboard();
+  } catch(e) {
+    console.warn('[OAA] saveScore Firestore failed', e);
+  }
+}
+
+function loadScores() { return _cachedScores; }
 
 function buildRunSnapshot() {
   const bossDropsList = [];
@@ -3463,10 +3686,10 @@ function showNameInput() {
   const preview = document.getElementById('name-preview');
   preview.innerHTML = `SCORE <span>${pendingRun.score.toLocaleString()}</span> · VAGUE <span>${pendingRun.wave}</span> · KILLS <span>${pendingRun.kills}</span>`;
   const input = document.getElementById('player-name-input');
-  // Pre-fill with last used name
-  const scores = loadScores();
-  if (scores.length > 0) {
-    const last = [...scores].sort((a,b) => b.date - a.date)[0];
+  // Pre-fill with last used name (from localStorage)
+  const localScores = loadLocalScores();
+  if (localScores.length > 0) {
+    const last = localScores[localScores.length - 1];
     if (last && last.name) input.value = last.name;
   }
   input.select();
@@ -3476,44 +3699,33 @@ function showNameInput() {
   input.onkeydown = (e) => { if (e.key === 'Enter') submitScore(); };
 }
 
-function submitScore() {
+async function submitScore() {
   const input = document.getElementById('player-name-input');
   const name = (input.value.trim().toUpperCase() || 'ANONYME').slice(0, 16);
   document.getElementById('name-input-screen').classList.add('hidden');
 
   const run = { ...pendingRun, name, timestamp: Date.now() };
-  const scores = loadScores();
-  scores.push(run);
-  scores.sort((a,b) => b.score - a.score);
-  scores.splice(MAX_SCORES); // keep top 10
-  saveScores(scores);
-  renderScoreboard();
 
-  // Save to server
-  fetch('save_score.php', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      game: 'ONE AGAINST ALL',
-      pseudo: name,
-      score: run.score,
-      wave: run.wave,
-      kills: run.kills,
-      playtime: window._gameStartTime ? Math.round((Date.now() - window._gameStartTime) / 1000) + 's' : '—',
-      date: run.date
-    })
-  }).catch(() => {});
-
-  // Show game over screen now
+  // Show game over immediately, save in background
   document.getElementById('death-score').textContent = run.score.toLocaleString();
   document.getElementById('go-wave').textContent = run.wave;
   document.getElementById('go-kills').textContent = run.kills;
   document.getElementById('gameover-screen').classList.remove('hidden');
+
+  // Save to Firebase (+ local fallback)
+  await saveScore(run);
 }
 
-function toggleScoreboard() {
-  document.getElementById('sb-panel').classList.toggle('open');
-  renderScoreboard();
+async function toggleScoreboard() {
+  const panel = document.getElementById('sb-panel');
+  panel.classList.toggle('open');
+  if (panel.classList.contains('open')) {
+    // Show loading state
+    const empty = document.getElementById('sb-empty');
+    if (empty) empty.textContent = 'CHARGEMENT...';
+    await fetchScores();
+    renderScoreboard();
+  }
 }
 
 function renderScoreboard() {
@@ -3543,21 +3755,22 @@ function renderScoreboard() {
       <div class="sb-score-col">
         <div class="sb-score-val">${run.score.toLocaleString()}</div>
       </div>
-      <button class="sb-detail-btn" title="Voir les détails" onclick="showRunDetail(${run.timestamp})">👁</button>
+      <button class="sb-detail-btn" title="Voir les détails" onclick="showRunDetail('${run.timestamp}')">👁</button>
     `;
     list.appendChild(entry);
   });
 }
 
 function clearScores() {
-  if (!confirm('Effacer tous les scores ?')) return;
+  if (!confirm('Effacer les scores locaux ? (Les scores en ligne restent sur Firebase)')) return;
   localStorage.removeItem(SB_KEY);
+  _cachedScores = [];
   renderScoreboard();
 }
 
 function showRunDetail(timestamp) {
   const scores = loadScores();
-  const run = scores.find(r => r.timestamp === timestamp);
+  const run = scores.find(r => r.timestamp === timestamp || r.timestamp === parseInt(timestamp));
   if (!run) return;
 
   document.getElementById('rdm-name').textContent = run.name;
@@ -3636,8 +3849,9 @@ document.addEventListener('click', e => {
   }
 });
 
-// Init scoreboard on load
-renderScoreboard();
+// Scoreboard is initialized after Firebase connects (see initFirebase above)
+// Fallback render in case Firebase is slow
+setTimeout(() => { if (_cachedScores.length === 0) renderScoreboard(); }, 500);
 
 // ─── END SCOREBOARD ──────────────────────────────────────────────
 </script>
