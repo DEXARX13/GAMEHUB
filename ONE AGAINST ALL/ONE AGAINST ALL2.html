@@ -2,6 +2,9 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
+  <!-- Firebase compat SDK (works in regular scripts) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <title>ONE AGAINST ALL</title>
 <!-- Firebase SDK -->
 <style>
@@ -1327,7 +1330,7 @@
   <div id="rdm-body"></div>
 </div>
 
-<script type="module">
+<script>
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const W = 900, H = 600;
@@ -3560,19 +3563,14 @@ function goToMenu() {
 
 // ─── SCOREBOARD SYSTEM (Firebase Firestore) ─────────────────────
 
-// Firebase init via ESM module — loaded async
 const MAX_SCORES = 20;
-let db = null; // Firestore instance, set once SDK loads
-let _cachedScores = []; // local cache for display
+let db = null;
+let _cachedScores = [];
 
-// Init Firebase when DOM ready
-(async function initFirebase() {
+// Firebase SDK loaded via <script> tags in <head> (compat mode)
+function initFirebase() {
   try {
-    const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js');
-    const { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, serverTimestamp }
-      = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js');
-
-    const app = initializeApp({
+    firebase.initializeApp({
       apiKey: "AIzaSyCsfxTIrn56ab5VYKx9hzLxG8WW3Hd0hgA",
       authDomain: "gamehub-e6aef.firebaseapp.com",
       projectId: "gamehub-e6aef",
@@ -3580,26 +3578,15 @@ let _cachedScores = []; // local cache for display
       messagingSenderId: "26866419223",
       appId: "1:26866419223:web:ec644ea65e44d3feaffe52"
     });
-
-    db = getFirestore(app);
-    window._fbAddDoc = addDoc;
-    window._fbCollection = collection;
-    window._fbQuery = query;
-    window._fbGetDocs = getDocs;
-    window._fbOrderBy = orderBy;
-    window._fbLimit = limit;
-    window._fbServerTimestamp = serverTimestamp;
-
+    db = firebase.firestore();
     console.log('[OAA] Firebase connected');
-    // Load scores on init
-    await fetchScores();
-    renderScoreboard();
+    fetchScores().then(() => renderScoreboard());
   } catch(e) {
-    console.warn('[OAA] Firebase init failed, falling back to localStorage', e);
+    console.warn('[OAA] Firebase init failed, using localStorage', e);
     _cachedScores = loadLocalScores();
     renderScoreboard();
   }
-})();
+}
 
 // ── Local fallback ─────────────────────────────────────────────
 const SB_KEY = 'oaa_scores_v1';
@@ -3620,12 +3607,10 @@ function saveLocalScore(run) {
 async function fetchScores() {
   if (!db) return;
   try {
-    const q = window._fbQuery(
-      window._fbCollection(db, 'oaa_scores'),
-      window._fbOrderBy('score', 'desc'),
-      window._fbLimit(MAX_SCORES)
-    );
-    const snap = await window._fbGetDocs(q);
+    const snap = await db.collection('oaa_scores')
+      .orderBy('score', 'desc')
+      .limit(MAX_SCORES)
+      .get();
     _cachedScores = snap.docs.map(d => ({ ...d.data(), id: d.id }));
   } catch(e) {
     console.warn('[OAA] fetchScores failed', e);
@@ -3648,7 +3633,7 @@ async function saveScore(run) {
       date:       run.date,
       playtime:   run.playtime || 0,
       timestamp:  run.timestamp,
-      createdAt:  window._fbServerTimestamp(),
+      createdAt:  firebase.firestore.FieldValue.serverTimestamp(),
       game:       'ONE AGAINST ALL',
       // Build details
       stats:       run.stats       || {},
@@ -3656,7 +3641,7 @@ async function saveScore(run) {
       bossDrops:   run.bossDrops   || [],
       bossesKilled:run.bossesKilled|| [],
     };
-    await window._fbAddDoc(window._fbCollection(db, 'oaa_scores'), payload);
+    await db.collection('oaa_scores').add(payload);
     console.log('[OAA] Score saved to Firestore');
     await fetchScores();
     renderScoreboard();
@@ -3889,26 +3874,14 @@ document.addEventListener('click', e => {
   }
 });
 
-// Scoreboard is initialized after Firebase connects (see initFirebase above)
+// Init Firebase
+initFirebase();
 // Fallback render in case Firebase is slow
-setTimeout(() => { if (_cachedScores.length === 0) renderScoreboard(); }, 500);
+setTimeout(() => { if (_cachedScores.length === 0) renderScoreboard(); }, 2000);
 
 // ─── END SCOREBOARD ──────────────────────────────────────────────
 
-// ── Expose functions globally for inline onclick handlers ─────────
-// (required because type="module" creates an isolated scope)
-window.startGame        = startGame;
-window.goToMenu         = goToMenu;
-window.resumeGame       = resumeGame;
-window.rerollBuffs      = rerollBuffs;
-window.openBossFight    = openBossFight;
-window.closeBossFight   = closeBossFight;
-window.startBossFight   = startBossFight;
-window.submitScore      = submitScore;
-window.toggleScoreboard = toggleScoreboard;
-window.clearScores      = clearScores;
-window.showRunDetail    = showRunDetail;
-window.closeRunDetail   = closeRunDetail;
+
 </script>
 </body>
 </html>
