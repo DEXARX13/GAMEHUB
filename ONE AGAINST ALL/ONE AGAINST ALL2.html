@@ -3778,27 +3778,64 @@ async function saveScore(run) {
     return;
   }
   try {
-    const payload = sanitizeForFirestore({
-      name:        run.name,
-      score:       run.score,
-      wave:        run.wave,
-      kills:       run.kills,
-      date:        run.date,
-      playtime:    run.playtime || 0,
-      timestamp:   run.timestamp,
-      createdAt:   firebase.firestore.FieldValue.serverTimestamp(),
-      game:        'ONE AGAINST ALL',
-      stats:       run.stats       || {},
-      buffs:       (run.buffs || []).map(b => ({ id:b.id||'', name:b.name||'', icon:b.icon||'', rarity:b.rarity||'common', count:b.count||1 })),
-      bossDrops:   (run.bossDrops  || []).map(b => ({ icon:b.icon||'', name:b.name||'' })),
-      bossesKilled:(run.bossesKilled||[]).map(b => ({ name:b.name||'', wave:b.wave||0 })),
-    });
+    // Build stats — only primitives, no undefined
+    const s = run.stats || {};
+    const cleanStats = {
+      maxHp:      s.maxHp      ?? 100,
+      damage:     s.damage     ?? '1.00',
+      speed:      s.speed      ?? '1.00',
+      firerate:   s.firerate   ?? 10,
+      orbs:       s.orbs       ?? 0,
+      orbDmg:     s.orbDmg     ?? '1.0',
+      orbSpd:     s.orbSpd     ?? '1.0',
+      scoreMult:  s.scoreMult  ?? '1.0',
+      freeze:     s.freeze     ?? '0%',
+      vampStacks: s.vampStacks ?? 0,
+      tripleShot: s.tripleShot ?? 0,
+      piercing:   s.piercing   ?? false,
+      specialPowers: (s.specialPowers || []).filter(Boolean),
+    };
+
+    const cleanBuffs = (run.buffs || []).map(b => ({
+      id:      String(b.id      || ''),
+      name:    String(b.name    || ''),
+      icon:    String(b.icon    || ''),
+      rarity:  String(b.rarity  || 'common'),
+      count:   Number(b.count   || 1),
+    }));
+
+    const cleanDrops = (run.bossDrops || []).map(b => ({
+      icon: String(b.icon || ''),
+      name: String(b.name || ''),
+    }));
+
+    const cleanBossesKilled = (run.bossesKilled || []).map(b => ({
+      name:  String(b.name  || ''),
+      wave:  Number(b.wave  || 0),
+      color: String(b.color || '#ffffff'),
+    }));
+
+    const payload = {
+      name:         String(run.name  || 'ANONYME'),
+      score:        Number(run.score || 0),
+      wave:         Number(run.wave  || 1),
+      kills:        Number(run.kills || 0),
+      date:         String(run.date  || ''),
+      playtime:     Number(run.playtime || 0),
+      timestamp:    Number(run.timestamp || Date.now()),
+      game:         'ONE AGAINST ALL',
+      stats:        cleanStats,
+      buffs:        cleanBuffs,
+      bossDrops:    cleanDrops,
+      bossesKilled: cleanBossesKilled,
+    };
+
     await db.collection('oaa_scores').add(payload);
     console.log('[OAA] Score saved to Firestore ✓');
     await fetchScores();
     renderScoreboard();
   } catch(e) {
-    console.error('[OAA] saveScore Firestore failed:', e.code, e.message);
+    console.error('[OAA] saveScore failed:', e.code, e.message);
   }
 }
 
