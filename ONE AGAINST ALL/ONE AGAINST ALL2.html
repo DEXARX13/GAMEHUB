@@ -999,74 +999,90 @@
   #bossfight-screen {
     position: absolute; top:0; left:0; right:0; bottom:0;
     background: rgba(4,6,10,0.97); z-index: 15;
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+    padding: 12px 10px 8px;
+    overflow: hidden;
   }
   #bossfight-screen.hidden { display: none; }
   #bossfight-screen h2 {
     font-family: 'Orbitron', sans-serif;
-    font-size: 22px; font-weight: 900; letter-spacing: 7px;
-    color: var(--neon-purple); text-shadow: 0 0 24px var(--neon-purple);
-    margin-bottom: 4px;
+    font-size: 16px; font-weight: 900; letter-spacing: 6px;
+    color: var(--neon-purple); text-shadow: 0 0 20px var(--neon-purple);
+    margin-bottom: 2px;
   }
-  #bossfight-screen > p { font-size: 9px; letter-spacing: 3px; color: rgba(204,68,255,0.4); margin-bottom: 24px; }
+  #bossfight-screen > p { font-size: 8px; letter-spacing: 3px; color: rgba(204,68,255,0.4); margin-bottom: 10px; }
 
-  #bossfight-layout { display: flex; gap: 20px; align-items: flex-start; width: 860px; }
+  #bossfight-layout { display: flex; gap: 10px; align-items: flex-start; width: 880px; height: 490px; }
 
-  #bossfight-boss-col { width: 190px; flex-shrink: 0; }
+  /* Boss column — fixed, scrollable */
+  #bossfight-boss-col { width: 165px; flex-shrink: 0; height: 100%; overflow-y: auto; }
+  #bossfight-boss-col::-webkit-scrollbar { width: 3px; }
+  #bossfight-boss-col::-webkit-scrollbar-thumb { background: rgba(204,68,255,0.3); }
+
   .bf-col-title {
-    font-family: 'Orbitron', sans-serif; font-size: 8px; letter-spacing: 4px;
+    font-family: 'Orbitron', sans-serif; font-size: 7px; letter-spacing: 3px;
     color: rgba(204,68,255,0.4); border-bottom: 1px solid rgba(204,68,255,0.1);
-    padding-bottom: 6px; margin-bottom: 10px;
+    padding-bottom: 5px; margin-bottom: 7px; position: sticky; top: 0;
+    background: var(--bg);
   }
   .bf-boss-card {
-    padding: 12px; margin-bottom: 7px;
+    padding: 7px 8px; margin-bottom: 4px;
     border: 1px solid rgba(255,255,255,0.07); cursor: pointer; transition: all 0.18s;
-    display: flex; align-items: center; gap: 10px;
+    display: flex; align-items: center; gap: 8px;
   }
   .bf-boss-card:hover { border-color: rgba(255,255,255,0.22); background: rgba(255,255,255,0.025); }
   .bf-boss-card.selected { border-color: currentColor; background: rgba(255,255,255,0.04); }
-  .bf-boss-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
-  .bf-boss-info { flex: 1; }
-  .bf-boss-name { font-family: 'Orbitron', sans-serif; font-size: 8px; font-weight: 700; letter-spacing: 2px; margin-bottom: 2px; }
-  .bf-boss-desc { font-size: 7px; color: rgba(255,255,255,0.28); line-height: 1.5; }
-  .bf-boss-check { font-size: 14px; flex-shrink: 0; opacity: 0; transition: opacity 0.15s; }
+  .bf-boss-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .bf-boss-info { flex: 1; min-width: 0; }
+  .bf-boss-name { font-family: 'Orbitron', sans-serif; font-size: 7px; font-weight: 700; letter-spacing: 1.5px; margin-bottom: 2px; }
+  .bf-boss-desc { font-size: 6.5px; color: rgba(255,255,255,0.28); line-height: 1.4; }
+  .bf-boss-check { font-size: 11px; flex-shrink: 0; opacity: 0; transition: opacity 0.15s; }
   .bf-boss-card.selected .bf-boss-check { opacity: 1; }
 
-  #bossfight-buff-col { flex: 1; }
-  #bossfight-buff-counter { font-family: 'Orbitron', sans-serif; font-size: 10px; font-weight: 900; letter-spacing: 2px; margin-bottom: 10px; }
+  /* Stage column */
+  #bossfight-stage-col { width: 115px; flex-shrink: 0; height: 100%; overflow-y: auto; }
+  #bossfight-stage-col::-webkit-scrollbar { width: 3px; }
+  #bossfight-stage-col::-webkit-scrollbar-thumb { background: rgba(204,68,255,0.3); }
+
+  /* Buff column — scrollable */
+  #bossfight-buff-col { flex: 1; height: 100%; display: flex; flex-direction: column; min-width: 0; }
+  #bossfight-buff-counter { font-family: 'Orbitron', sans-serif; font-size: 9px; font-weight: 900; letter-spacing: 2px; margin-bottom: 6px; flex-shrink: 0; }
   #bossfight-buff-counter .used { color: var(--neon-orange); }
   #bossfight-buff-counter .total { color: rgba(0,255,221,0.4); }
 
-  #bossfight-buff-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 5px; }
+  #bossfight-buff-grid { display: grid; grid-template-columns: repeat(5,1fr); gap: 4px; overflow-y: auto; flex: 1; padding-right: 3px; }
+  #bossfight-buff-grid::-webkit-scrollbar { width: 3px; }
+  #bossfight-buff-grid::-webkit-scrollbar-thumb { background: rgba(255,136,0,0.3); }
+
   .pbt {
-    padding: 7px 5px; text-align: center;
+    padding: 5px 3px; text-align: center;
     border: 1px solid rgba(255,136,0,0.1); background: rgba(255,136,0,0.015);
     cursor: pointer; transition: all 0.13s; position: relative;
   }
   .pbt:hover { border-color: rgba(255,136,0,0.3); background: rgba(255,136,0,0.05); }
-  .pbt.pbt-on { border-color: var(--neon-orange); background: rgba(255,136,0,0.09); box-shadow: 0 0 8px rgba(255,136,0,0.12); }
+  .pbt.pbt-on { border-color: var(--neon-orange); background: rgba(255,136,0,0.09); box-shadow: 0 0 6px rgba(255,136,0,0.12); }
   .pbt.pbt-rare { border-color: rgba(204,68,255,0.12); background: rgba(204,68,255,0.015); }
   .pbt.pbt-rare:hover { border-color: rgba(204,68,255,0.3); background: rgba(204,68,255,0.05); }
-  .pbt.pbt-rare.pbt-on { border-color: var(--neon-purple); background: rgba(204,68,255,0.09); box-shadow: 0 0 8px rgba(204,68,255,0.12); }
+  .pbt.pbt-rare.pbt-on { border-color: var(--neon-purple); background: rgba(204,68,255,0.09); box-shadow: 0 0 6px rgba(204,68,255,0.12); }
   .pbt.pbt-disabled { opacity: 0.28; cursor: not-allowed; }
-  .pbt-icon { font-size: 17px; display: block; margin-bottom: 3px; }
-  .pbt-name { font-family: 'Orbitron', sans-serif; font-size: 5.5px; font-weight: 700; letter-spacing: 0.5px; color: rgba(255,136,0,0.65); line-height: 1.3; }
+  .pbt-icon { font-size: 14px; display: block; margin-bottom: 2px; }
+  .pbt-name { font-family: 'Orbitron', sans-serif; font-size: 5px; font-weight: 700; letter-spacing: 0.3px; color: rgba(255,136,0,0.65); line-height: 1.2; }
   .pbt.pbt-rare .pbt-name { color: rgba(204,68,255,0.8); }
   .pbt.pbt-on .pbt-name { color: var(--neon-orange); }
   .pbt.pbt-rare.pbt-on .pbt-name { color: var(--neon-purple); }
   .pbt-badge {
-    position: absolute; top: 2px; right: 2px;
-    font-family: 'Orbitron', sans-serif; font-size: 7px; font-weight: 900;
+    position: absolute; top: 1px; right: 1px;
+    font-family: 'Orbitron', sans-serif; font-size: 6px; font-weight: 900;
     color: var(--neon-cyan); background: rgba(0,0,0,0.55); padding: 0 2px;
   }
 
-  #bossfight-footer { display: flex; gap: 12px; margin-top: 18px; }
+  #bossfight-footer { display: flex; gap: 10px; margin-top: 8px; flex-shrink: 0; }
   .bf-btn {
-    font-family: 'Orbitron', sans-serif; font-size: 11px; font-weight: 700;
-    letter-spacing: 4px; padding: 12px 32px; background: transparent; cursor: pointer; transition: all 0.2s;
+    font-family: 'Orbitron', sans-serif; font-size: 9px; font-weight: 700;
+    letter-spacing: 3px; padding: 9px 20px; background: transparent; cursor: pointer; transition: all 0.2s;
   }
-  #bf-start { border: 1px solid var(--neon-purple); color: var(--neon-purple); }
-  #bf-start:hover:not(:disabled) { background: rgba(204,68,255,0.1); box-shadow: 0 0 18px rgba(204,68,255,0.2); }
+  #bf-start { border: 1px solid var(--neon-purple); color: var(--neon-purple); flex: 1; }
+  #bf-start:hover:not(:disabled) { background: rgba(204,68,255,0.1); box-shadow: 0 0 14px rgba(204,68,255,0.2); }
   #bf-start:disabled { opacity: 0.3; cursor: not-allowed; }
   #bf-cancel { border: 1px solid rgba(0,255,221,0.18); color: rgba(0,255,221,0.4); }
   #bf-cancel:hover { border-color: var(--neon-cyan); color: var(--neon-cyan); }
@@ -3509,7 +3525,7 @@ function renderBFBuffGrid() {
     if (!group.items.length) return;
     // Section header
     const header = document.createElement('div');
-    header.style.cssText = 'grid-column:1/-1;font-family:Orbitron,sans-serif;font-size:8px;font-weight:900;letter-spacing:2px;color:rgba(0,255,221,0.3);margin-top:8px;margin-bottom:2px';
+    header.style.cssText = 'grid-column:1/-1;font-family:Orbitron,sans-serif;font-size:7px;font-weight:900;letter-spacing:2px;color:rgba(0,255,221,0.25);margin-top:5px;margin-bottom:1px;padding-top:4px;border-top:1px solid rgba(0,255,221,0.06)';
     header.textContent = group.label;
     grid.appendChild(header);
 
@@ -3738,34 +3754,51 @@ async function fetchScores() {
 }
 
 // ── Save score ─────────────────────────────────────────────────
+function sanitizeForFirestore(obj) {
+  // Recursively remove undefined, functions, and non-serializable values
+  if (obj === null || obj === undefined) return null;
+  if (typeof obj === 'function') return null;
+  if (typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(sanitizeForFirestore).filter(v => v !== null);
+  const out = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (typeof v === 'function') continue;
+    if (v === undefined) continue;
+    out[k] = sanitizeForFirestore(v);
+  }
+  return out;
+}
+
 async function saveScore(run) {
   // Always save locally as fallback
   saveLocalScore(run);
 
-  if (!db) return;
+  if (!db) {
+    console.warn('[OAA] db not ready, score saved locally only');
+    return;
+  }
   try {
-    const payload = {
-      name:       run.name,
-      score:      run.score,
-      wave:       run.wave,
-      kills:      run.kills,
-      date:       run.date,
-      playtime:   run.playtime || 0,
-      timestamp:  run.timestamp,
-      createdAt:  firebase.firestore.FieldValue.serverTimestamp(),
-      game:       'ONE AGAINST ALL',
-      // Build details
+    const payload = sanitizeForFirestore({
+      name:        run.name,
+      score:       run.score,
+      wave:        run.wave,
+      kills:       run.kills,
+      date:        run.date,
+      playtime:    run.playtime || 0,
+      timestamp:   run.timestamp,
+      createdAt:   firebase.firestore.FieldValue.serverTimestamp(),
+      game:        'ONE AGAINST ALL',
       stats:       run.stats       || {},
-      buffs:       run.buffs       || [],
-      bossDrops:   run.bossDrops   || [],
-      bossesKilled:run.bossesKilled|| [],
-    };
+      buffs:       (run.buffs || []).map(b => ({ id:b.id||'', name:b.name||'', icon:b.icon||'', rarity:b.rarity||'common', count:b.count||1 })),
+      bossDrops:   (run.bossDrops  || []).map(b => ({ icon:b.icon||'', name:b.name||'' })),
+      bossesKilled:(run.bossesKilled||[]).map(b => ({ name:b.name||'', wave:b.wave||0 })),
+    });
     await db.collection('oaa_scores').add(payload);
-    console.log('[OAA] Score saved to Firestore');
+    console.log('[OAA] Score saved to Firestore ✓');
     await fetchScores();
     renderScoreboard();
   } catch(e) {
-    console.warn('[OAA] saveScore Firestore failed', e);
+    console.error('[OAA] saveScore Firestore failed:', e.code, e.message);
   }
 }
 
