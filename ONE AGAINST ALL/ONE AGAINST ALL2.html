@@ -1598,10 +1598,12 @@ function update() {
 
   // Move player
   let dx=0, dy=0;
-  if (state.keys['z']||state.keys['arrowup']) dy-=1;
-  if (state.keys['s']||state.keys['arrowdown']) dy+=1;
-  if (state.keys['q']||state.keys['arrowleft']) dx-=1;
-  if (state.keys['d']||state.keys['arrowright']) dx+=1;
+  const inv = (state.controlsInverted||0) > 0 ? -1 : 1;
+  if (state.controlsInverted > 0) state.controlsInverted--;
+  if (state.keys['z']||state.keys['arrowup']) dy-=inv;
+  if (state.keys['s']||state.keys['arrowdown']) dy+=inv;
+  if (state.keys['q']||state.keys['arrowleft']) dx-=inv;
+  if (state.keys['d']||state.keys['arrowright']) dx+=inv;
   if (dx||dy) { const l=Math.sqrt(dx*dx+dy*dy); p.x+=dx/l*spd; p.y+=dy/l*spd; }
   p.x = Math.max(p.r, Math.min(W-p.r, p.x));
   p.y = Math.max(p.r, Math.min(H-p.r, p.y));
@@ -2331,49 +2333,110 @@ const BOSS_DEFS = {
     color: '#ffffff',
     r: 20,
     hpBase: 300,
-    speed: 1.8,
+    speed: 2.5,
     intro: { label: '⚠ BOSS FINAL · VAGUE 100 ⚠', color: '#ffffff' },
     drop: { id:'clone', icon:'🪞', name:'CLONE', desc:'Un fantôme de vous tire en miroir pendant 8s.', rare:true,
       apply: () => { CLONE_ACTIVE=true; CLONE_TIMER=480; } },
-    initAI: (b) => { b.mirrorTimer=0; b.burstTimer=0; },
+    initAI: (b) => {
+      b.phase = 'stalk';      // stalk | vanish | ambush
+      b.phaseTimer = 0;
+      b.visible = true;
+      b.cloneTimer = 200;     // spawns fake player clones
+      b.invertTimer = 0;      // controls inversion countdown
+      b.shootTimer = 0;
+      b.dashTimer = 0;
+    },
     updateAI: (b, p) => {
-      // Mirror position relative to center — teleport instantly to mirror
-      const targetX = W - p.x;
-      const targetY = H - p.y;
-      const ddx=targetX-b.x, ddy=targetY-b.y, dd=Math.sqrt(ddx*ddx+ddy*ddy)||1;
-      // Snap fast to mirror position
-      b.x += ddx/dd * Math.min(dd, b.speed * 4);
-      b.y += ddy/dd * Math.min(dd, b.speed * 4);
-      b.x=Math.max(b.r,Math.min(W-b.r,b.x));
-      b.y=Math.max(b.r,Math.min(H-b.r,b.y));
+      b.phaseTimer++;
+      b.cloneTimer--;
+      b.shootTimer++;
+      b.dashTimer++;
 
-      // Main shot toward player every 25 frames
-      b.mirrorTimer++;
-      if(b.mirrorTimer >= 25){
-        b.mirrorTimer=0;
-        const dx=p.x-b.x, dy=p.y-b.y, dl=Math.sqrt(dx*dx+dy*dy)||1;
-        const spd = Math.min(9, 5 + state.wave*0.03);
-        const dmg = Math.round(9*(b.dmgMult||1));
-        // Main bullet toward player
-        state.enemyBullets.push({x:b.x,y:b.y,vx:dx/dl*spd,vy:dy/dl*spd,r:5,damage:dmg,color:'#ffffff',life:90,owner:'enemy'});
-        // Two spread bullets
-        const ang = Math.atan2(dy, dx);
-        [-0.3, 0.3].forEach(spread => {
-          state.enemyBullets.push({x:b.x,y:b.y,
-            vx:Math.cos(ang+spread)*spd*0.85, vy:Math.sin(ang+spread)*spd*0.85,
-            r:4, damage:Math.round(dmg*0.7), color:'#cccccc', life:85, owner:'enemy'});
-        });
+      // ── PHASE: STALK ── circle around player at distance
+      if (b.phase === 'stalk') {
+        const angle = Math.atan2(p.y-b.y, p.x-b.x);
+        const targetDist = 160;
+        const dx=p.x-b.x, dy=p.y-b.y, d=Math.sqrt(dx*dx+dy*dy)||1;
+        // Orbit
+        const orbitAngle = angle + Math.PI/2;
+        b.x += (Math.cos(orbitAngle)*b.speed*1.2 + (d-targetDist)*0.04*(dx/d));
+        b.y += (Math.sin(orbitAngle)*b.speed*1.2 + (d-targetDist)*0.04*(dy/d));
+        b.x=Math.max(b.r,Math.min(W-b.r,b.x));
+        b.y=Math.max(b.r,Math.min(H-b.r,b.y));
+        b.visible = true;
+
+        // Rapid-fire while stalking — 3 bullets in a tight spread every 20 frames
+        if (b.shootTimer >= 20) {
+          b.shootTimer = 0;
+          const ang2 = Math.atan2(p.y-b.y, p.x-b.x);
+          const spd = Math.min(11, 7 + state.wave*0.02);
+          const dmg = Math.round(8*(b.dmgMult||1));
+          [-0.18, 0, 0.18].forEach(spread => {
+            state.enemyBullets.push({
+              x:b.x, y:b.y,
+              vx:Math.cos(ang2+spread)*spd, vy:Math.sin(ang2+spread)*spd,
+              r:5, damage:dmg, color:'#ffffff', life:120, owner:'enemy'
+            });
+          });
+        }
+
+        // After 4s → vanish
+        if (b.phaseTimer >= 240) { b.phase='vanish'; b.phaseTimer=0; b.visible=false; }
       }
 
-      // Burst of 8 radial bullets every 3s
-      b.burstTimer++;
-      if(b.burstTimer >= 180){
-        b.burstTimer=0;
-        for(let i=0;i<8;i++){
-          const a=(i/8)*Math.PI*2;
-          state.enemyBullets.push({x:b.x,y:b.y,vx:Math.cos(a)*5,vy:Math.sin(a)*5,
-            r:4,damage:Math.round(7*(b.dmgMult||1)),color:'#aaaaaa',life:80,owner:'enemy'});
+      // ── PHASE: VANISH ── invisible, teleports near player, inverts controls
+      else if (b.phase === 'vanish') {
+        b.visible = false;
+        // Move fast toward player unseen
+        const dx=p.x-b.x, dy=p.y-b.y, d=Math.sqrt(dx*dx+dy*dy)||1;
+        b.x += dx/d*b.speed*2.5; b.y += dy/d*b.speed*2.5;
+        b.x=Math.max(b.r,Math.min(W-b.r,b.x));
+        b.y=Math.max(b.r,Math.min(H-b.r,b.y));
+
+        // After 1.5s → ambush: appear right next to player + invert controls
+        if (b.phaseTimer >= 90) {
+          b.phase='ambush'; b.phaseTimer=0; b.visible=true;
+          // Invert controls for 3s
+          state.controlsInverted = 180;
+          particles(b.x, b.y, '#ffffff', 20);
+          particles(p.x, p.y, '#cccccc', 12);
         }
+      }
+
+      // ── PHASE: AMBUSH ── very fast dash attacks, then return to stalk
+      else if (b.phase === 'ambush') {
+        b.visible = true;
+        const dx=p.x-b.x, dy=p.y-b.y, d=Math.sqrt(dx*dx+dy*dy)||1;
+        // Rapid dashes
+        if (b.dashTimer >= 25) {
+          b.dashTimer = 0;
+          b.x += dx/d * 60; b.y += dy/d * 60;
+          b.x=Math.max(b.r,Math.min(W-b.r,b.x));
+          b.y=Math.max(b.r,Math.min(H-b.r,b.y));
+          // Radial burst on each dash
+          for(let i=0;i<6;i++){
+            const a=(i/6)*Math.PI*2;
+            state.enemyBullets.push({x:b.x,y:b.y,vx:Math.cos(a)*6,vy:Math.sin(a)*6,
+              r:4,damage:Math.round(7*(b.dmgMult||1)),color:'#dddddd',life:70,owner:'enemy'});
+          }
+        }
+        // After 3s → back to stalk
+        if (b.phaseTimer >= 180) { b.phase='stalk'; b.phaseTimer=0; }
+      }
+
+      // ── SPAWN FAKE CLONE every ~3.5s ── a fake "player" that charges at real player
+      if (b.cloneTimer <= 0) {
+        b.cloneTimer = 210;
+        // Fake player clone spawns near boss
+        state.enemies.push({
+          x: b.x + (Math.random()-0.5)*60,
+          y: b.y + (Math.random()-0.5)*60,
+          r: 12, hp: 18, maxHp: 18,
+          speed: 3.5, color: '#aaaaaa', score: 15,
+          type: 'fast', isMimeClone: true,
+          dmgMult: b.dmgMult||1
+        });
+        particles(b.x, b.y, '#888888', 8);
       }
     }
   }
@@ -2855,26 +2918,27 @@ function draw() {
         }
       });
     }
-    // Boss core
-    ctx.shadowBlur = 30; ctx.shadowColor = boss.color;
-    ctx.fillStyle = boss.color;
-    ctx.beginPath(); ctx.arc(boss.x, boss.y, boss.r, 0, Math.PI*2); ctx.fill();
-    // Spectre: semi-transparent when invisible
-    if (boss.visible === false) ctx.globalAlpha = 0.18;
-    ctx.shadowBlur = 30; ctx.shadowColor = boss.color;
-    ctx.fillStyle = boss.color;
-    ctx.beginPath(); ctx.arc(boss.x, boss.y, boss.r, 0, Math.PI*2); ctx.fill();
-    ctx.globalAlpha = 1;
-    // Inner core
-    ctx.fillStyle = 'rgba(0,0,0,0.45)';
-    ctx.beginPath(); ctx.arc(boss.x, boss.y, boss.r*0.45, 0, Math.PI*2); ctx.fill();
-    // Pulsing ring
-    ctx.strokeStyle = boss.color;
-    ctx.lineWidth = 2;
-    ctx.globalAlpha = 0.4 + Math.sin(Date.now()*0.004)*0.3;
-    ctx.beginPath(); ctx.arc(boss.x, boss.y, boss.r + 10 + Math.sin(Date.now()*0.004)*5, 0, Math.PI*2); ctx.stroke();
-    ctx.globalAlpha = 1;
-    ctx.shadowBlur = 0;
+    // Boss core — skip if mime in vanish phase
+    if (boss.visible === false && boss.phase === 'vanish') {
+      // completely invisible during vanish — no draw
+    } else {
+      ctx.shadowBlur = 30; ctx.shadowColor = boss.color;
+      ctx.fillStyle = boss.color;
+      // Spectre: semi-transparent when invisible
+      if (boss.visible === false && boss.phase !== 'vanish') ctx.globalAlpha = 0.18;
+      ctx.beginPath(); ctx.arc(boss.x, boss.y, boss.r, 0, Math.PI*2); ctx.fill();
+      ctx.globalAlpha = 1;
+      // Inner core
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.beginPath(); ctx.arc(boss.x, boss.y, boss.r*0.45, 0, Math.PI*2); ctx.fill();
+      // Pulsing ring
+      ctx.strokeStyle = boss.color;
+      ctx.lineWidth = 2;
+      ctx.globalAlpha = 0.4 + Math.sin(Date.now()*0.004)*0.3;
+      ctx.beginPath(); ctx.arc(boss.x, boss.y, boss.r + 10 + Math.sin(Date.now()*0.004)*5, 0, Math.PI*2); ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.shadowBlur = 0;
+    }
   }
 
   // Boss-specific: web zones
@@ -2953,6 +3017,17 @@ function draw() {
       ctx.fillStyle=`rgba(170,68,255,${state.lifeStealPulse*0.08})`;
       ctx.beginPath(); ctx.arc(state.player.x,state.player.y,140,0,Math.PI*2); ctx.fill();
     }
+  }
+
+  // Control inversion warning (Mime ability)
+  if ((state.controlsInverted||0) > 0) {
+    ctx.fillStyle = `rgba(200,200,200,${Math.min(0.12, state.controlsInverted/180*0.12)})`;
+    ctx.fillRect(0,0,W,H);
+    ctx.fillStyle = `rgba(255,255,255,${0.5+Math.sin(Date.now()*0.015)*0.35})`;
+    ctx.font = '700 11px Orbitron, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('⚠ CONTRÔLES INVERSÉS', W/2, 52);
+    ctx.textAlign = 'left';
   }
 
   // Player
@@ -3254,7 +3329,8 @@ function startBossFight() {
   state.shooting = false; state.shootCooldown = 0;
   state.orbs = []; state.shockwaveTimer = 0;
   state.regenTimer = 0; state.timeScale = 1; state.shockwavePulse = 0; state.orbAngle = 0;
-  state.enemiesToSpawn = 0;
+  state.enemiesToSpawn = 0; state.controlsInverted = 0; state.bossesKilled = [];
+  window._gameStartTime = Date.now();
   acquiredBuffs = [];
   FIRE_RATE_BONUS = 0; PIERCING = false; TRIPLE_SHOT = 0;
   BIGGER_BULLETS = false; BULLET_SPEED_BONUS = 0; EXPLOSION_ON_KILL = false;
