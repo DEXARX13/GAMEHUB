@@ -4,8 +4,6 @@
 <meta charset="UTF-8">
 <title>ONE AGAINST ALL</title>
 <!-- Firebase SDK -->
-<script type="module" src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"></script>
-<script type="module" src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
 
@@ -280,6 +278,10 @@
   }
 
   .buff-card.rare .buff-desc { color: rgba(204,68,255,0.6); }
+  .buff-card.legendary { border-color: rgba(255,215,0,0.5); background: rgba(255,215,0,0.04); }
+  .buff-card.legendary:hover { border-color: #ffd700; background: rgba(255,215,0,0.1); box-shadow: 0 0 28px rgba(255,215,0,0.25); transform: translateY(-4px); }
+  .buff-card.legendary .buff-name { color: #ffd700; }
+  .buff-card.legendary .buff-desc { color: rgba(255,215,0,0.65); }
 
   #reroll-btn {
     font-family: 'Orbitron', sans-serif;
@@ -1325,7 +1327,7 @@
   <div id="rdm-body"></div>
 </div>
 
-<script>
+<script type="module">
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const W = 900, H = 600;
@@ -1360,7 +1362,7 @@ let acquiredBuffs = []; // { id, name, icon, desc, rare, count }
 function recordBuff(b) {
   const existing = acquiredBuffs.find(x => x.id === b.id);
   if (existing) existing.count++;
-  else acquiredBuffs.push({ id: b.id, name: b.name, icon: b.icon, desc: b.desc, rare: b.rare, count: 1 });
+  else acquiredBuffs.push({ id: b.id, name: b.name, icon: b.icon, desc: b.desc, rare: b.rare, rarity: b.rarity, count: 1 });
 }
 
 function pauseGame() {
@@ -1457,11 +1459,11 @@ function populatePausePanel() {
   }
   acquiredBuffs.forEach(b => {
     const row = document.createElement('div');
-    row.className = 'active-buff-row' + (b.rare ? ' rare-buff' : '');
+    row.className = 'active-buff-row' + (b.rarity === 'legendary' ? ' rare-buff' : b.rarity === 'rare' ? ' rare-buff' : b.rare ? ' rare-buff' : '');
     row.innerHTML = `
       <span class="active-buff-icon">${b.icon}</span>
       <div class="active-buff-info">
-        <div class="active-buff-name">${b.name}${b.rare ? ' ★' : ''}</div>
+        <div class="active-buff-name">${b.name}${b.rarity==='legendary'?' ★★':b.rarity==='rare'?' ✦':b.rare?' ★':''}</div>
         <div class="active-buff-desc">${b.desc}</div>
       </div>
       ${b.count > 1 ? `<span class="active-buff-count">×${b.count}</span>` : ''}
@@ -1510,13 +1512,14 @@ function startGame() {
   state.orbs = []; state.shockwaveTimer = 0; state.bulletTimeTimer = 0;
   state.regenTimer = 0; state.timeScale = 1; state.shockwavePulse = 0; state.orbAngle = 0;
   acquiredBuffs = [];
-  FIRE_RATE_BONUS = 0; PIERCING = false; TRIPLE_SHOT = 0;
-  BIGGER_BULLETS = false; BULLET_SPEED_BONUS = 0; EXPLOSION_ON_KILL = false;
-  VAMPIRISM = false; VAMPIRISM_STACKS = 0; SHIELD_ACTIVE = false; PASSIVE_REGEN = false;
-  I_FRAME_BONUS = 0; SCORE_MULT = 1;
-  ORB_COUNT = 0; ORB_DAMAGE_MULT=1; ORB_SPEED_MULT=1; ORB_SIZE_MULT=1;
-  CHAIN_LIGHTNING = false; SHOCKWAVE = false;
-  BULLET_TIME = false; FREEZE_CHANCE = 0; BACK_SHOT = false;
+  FIRE_RATE_BONUS=0; PIERCING=false; TRIPLE_SHOT=0;
+  BIGGER_BULLETS=false; BIGGER_BULLETS_BONUS=4; BULLET_SPEED_BONUS=0;
+  EXPLOSION_ON_KILL=false; EXPLOSION_LEVEL=0; CHAIN_LIGHTNING=false; CHAIN_LEVEL=0;
+  VAMPIRISM=false; VAMPIRISM_STACKS=0; SHIELD_ACTIVE=false; SHIELD_STACKS=0; PASSIVE_REGEN=false;
+  I_FRAME_BONUS=0; SCORE_MULT=1;
+  ORB_COUNT=0; ORB_DAMAGE_MULT=1; ORB_SPEED_MULT=1; ORB_SIZE_MULT=1;
+  SHOCKWAVE=false; BULLET_TIME=false; FREEZE_CHANCE=0; BACK_SHOT=false;
+  LIFE_STEALER=false; lifeStealerTimer=0;
   ARMOR = false; HOMING = false; MINION_SPAWN = false;
   boss = null; allies = []; familiars = []; bossDropActive = false;
   RESURRECTION = false; WEB_TRAIL=false; FRACTURE=false;
@@ -1644,8 +1647,9 @@ function update() {
 
   // Orbs update — orbit around player
   if (ORB_COUNT > 0) {
-    state.orbAngle = (state.orbAngle || 0) + 0.04;
-    // Check orb collision with enemies
+    state.orbAngle = (state.orbAngle || 0) + 0.04 * (ORB_SPEED_MULT || 1);
+    const orbHitR = 7 * (ORB_SIZE_MULT || 1);
+    const orbDmg  = 0.3 * (ORB_DAMAGE_MULT || 1);
     for (let oi = 0; oi < ORB_COUNT; oi++) {
       const oa = state.orbAngle + (oi / ORB_COUNT) * Math.PI * 2;
       const ox = p.x + Math.cos(oa) * 36;
@@ -1653,14 +1657,14 @@ function update() {
       for (let ei = state.enemies.length-1; ei >= 0; ei--) {
         const e = state.enemies[ei];
         const ddx=ox-e.x, ddy=oy-e.y;
-        if (Math.sqrt(ddx*ddx+ddy*ddy) < e.r + 7) {
-          e.hp -= 0.3;
+        if (Math.sqrt(ddx*ddx+ddy*ddy) < e.r + orbHitR) {
+          e.hp -= orbDmg;
           particles(ox, oy, '#ffcc00', 2);
           if (e.hp <= 0) {
             particles(e.x, e.y, e.color, 12);
             state.score += Math.round(e.score * state.wave * SCORE_MULT);
             state.kills++;
-            if (VAMPIRISM) p.hp = Math.min(p.maxHp, p.hp + 3);
+            if (VAMPIRISM) p.hp = Math.min(p.maxHp, p.hp + VAMPIRISM_STACKS);
             state.enemies.splice(ei, 1);
           }
         }
@@ -1766,33 +1770,44 @@ function update() {
         if (!PIERCING) hit = true;
         if (e.hp <= 0) {
           if (EXPLOSION_ON_KILL) {
-            state.enemies.forEach((ne, ni) => {
-              if (ni !== ei) {
-                const ddx=ne.x-e.x, ddy=ne.y-e.y;
-                if (Math.sqrt(ddx*ddx+ddy*ddy) < 60) ne.hp -= b.damage * 0.5;
-              }
-            });
-            for(let k=0;k<20;k++) particles(e.x, e.y, '#ff8800', 1);
+            const expLevel = EXPLOSION_LEVEL || 1;
+            const expR = 70 + (expLevel - 1) * 20; // 70 / 90 / 110 px
+            const expDmg = b.damage * (0.8 + expLevel * 0.3);
+            const ex = e.x, ey = e.y;
+            // Damage nearby enemies
+            for (let ni = state.enemies.length-1; ni >= 0; ni--) {
+              if (ni === ei) continue;
+              const ne = state.enemies[ni];
+              if (Math.sqrt((ne.x-ex)**2+(ne.y-ey)**2) < expR) ne.hp -= expDmg;
+            }
+            // Big visual burst
+            for(let k=0;k<30;k++) particles(ex+(Math.random()-0.5)*expR*0.8, ey+(Math.random()-0.5)*expR*0.8, '#ff8800', 1);
+            for(let k=0;k<12;k++) particles(ex, ey, '#ffdd00', 1);
+            // Store explosion ring for draw
+            if (!state.explosions) state.explosions = [];
+            state.explosions.push({ x:ex, y:ey, r:0, maxR:expR, life:20 });
           }
           // Chain lightning
           if (CHAIN_LIGHTNING) {
+            const chainLevel = CHAIN_LEVEL || 1;
+            const chainRange = 160 + chainLevel * 50;
+            const chainDmg = b.damage * (1.0 + chainLevel * 0.4);
             let closest = null, closestDist = 999;
             state.enemies.forEach((ne, ni) => {
               if (ni !== ei) {
-                const ddx=ne.x-e.x, ddy=ne.y-e.y;
-                const d=Math.sqrt(ddx*ddx+ddy*ddy);
+                const d = Math.hypot(ne.x-e.x, ne.y-e.y);
                 if (d < closestDist) { closestDist=d; closest=ne; }
               }
             });
-            if (closest && closestDist < 180) {
-              closest.hp -= b.damage;
-              // Draw lightning arc as particles
-              for (let s=0;s<8;s++) {
-                const t=s/8;
-                const lx=e.x+(closest.x-e.x)*t+(Math.random()-0.5)*20;
-                const ly=e.y+(closest.y-e.y)*t+(Math.random()-0.5)*20;
-                particles(lx, ly, '#ffff88', 1);
+            if (closest && closestDist < chainRange) {
+              closest.hp -= chainDmg;
+              for (let s=0; s<12; s++) {
+                const t=s/12;
+                const lx=e.x+(closest.x-e.x)*t+(Math.random()-0.5)*28;
+                const ly=e.y+(closest.y-e.y)*t+(Math.random()-0.5)*28;
+                particles(lx, ly, '#ffff44', 1);
               }
+              particles(closest.x, closest.y, '#ffff44', 6);
             }
           }
           particles(e.x, e.y, e.color, 12);
@@ -2754,41 +2769,46 @@ function onBossDefeatedNoDrop() {
 
 // --- BUFFS ---
 const BUFF_POOL = [
-  // ── Offensifs ──
-  { id:'damage',    rare:false, icon:'⚡', name:'PUISSANCE',      desc:'+50% dégâts par tir.',                            apply: () => { state.buffs.damage += 0.5; } },
-  { id:'firerate',  rare:false, icon:'🔥', name:'CADENCE',         desc:'Cadence de tir +40% plus rapide.',                apply: () => { FIRE_RATE_BONUS += 0.4; } },
-  { id:'bulletspd', rare:false, icon:'💫', name:'VÉLOCITÉ',         desc:'Projectiles +30% plus rapides.',                  apply: () => { BULLET_SPEED_BONUS += 3.5; } },
-  { id:'bigbullet', rare:false, icon:'💥', name:'GROS CALIBRE',    desc:'Zone de touche des projectiles +40%.',             apply: () => { BIGGER_BULLETS = true; } },
-  { id:'backshot',  rare:false, icon:'🔄', name:'TIR ARRIÈRE',     desc:'Un projectile part en sens inverse à chaque tir.', apply: () => { BACK_SHOT = true; } },
-  { id:'freeze',    rare:false, icon:'❄️', name:'GEL',              desc:'25% de chance de ralentir un ennemi touché.',      apply: () => { FREEZE_CHANCE += 0.25; } },
-  { id:'piercing',  rare:true,  icon:'🎯', name:'PERFORATION',     desc:'Vos tirs traversent tous les ennemis.',            apply: () => { PIERCING = true; } },
-  { id:'triple',    rare:true,  icon:'🔱', name:'TRIPLE TIR',      desc:'3 projectiles simultanément en éventail.',         apply: () => { TRIPLE_SHOT = Math.min(3, TRIPLE_SHOT+1); } },
-  { id:'explode',   rare:true,  icon:'💣', name:'EXPLOSION',       desc:'Chaque kill explose et blesse les proches.',       apply: () => { EXPLOSION_ON_KILL = true; } },
-  { id:'chain',     rare:true,  icon:'⚡', name:'CHAÎNE ÉCLAIR',   desc:'Chaque kill envoie un arc sur l\'ennemi le plus proche.', apply: () => { CHAIN_LIGHTNING = true; } },
-  // ── Pouvoirs ──
-  { id:'orb1',      rare:false, icon:'🌀', name:'ORBE',             desc:'+1 orbe tournant autour de vous. Inflige des dégâts continus.', apply: () => { ORB_COUNT += 1; } },
-  { id:'orb2',      rare:true,  icon:'🌌', name:'DOUBLE ORBE',     desc:'+2 orbes tournants supplémentaires.',              apply: () => { ORB_COUNT += 2; } },
-  { id:'shockwave', rare:true,  icon:'🌊', name:'ONDE DE CHOC',    desc:'Toutes les 10s, repousse et blesse les ennemis proches.', apply: () => { SHOCKWAVE = true; } },
-  { id:'bullettime',rare:true,  icon:'⏱️', name:'BULLET TIME',     desc:'Quand vous êtes en danger critique (<25% PV), les ennemis ralentissent fortement.', apply: () => { BULLET_TIME = true; } },
-  // ── Survie ──
-  { id:'maxhp',     rare:false, icon:'❤️', name:'VIE MAX',          desc:'+30 PV max. Récupère aussi 20 PV.',               apply: () => { state.buffs.maxHp+=30; state.player.maxHp+=30; state.player.hp=Math.min(state.player.hp+20,state.player.maxHp); } },
-  { id:'regen',     rare:false, icon:'🧬', name:'RÉGÉNÉRATION',    desc:'+20 PV restaurés immédiatement.',                  apply: () => { state.player.hp = Math.min(state.player.hp+20,state.player.maxHp); } },
-  { id:'pasregen',  rare:false, icon:'🩺', name:'REGEN PASSIVE',   desc:'+1 PV toutes les 3 secondes.',                    apply: () => { PASSIVE_REGEN = true; } },
-  { id:'vampire',   rare:true,  icon:'🩸', name:'VAMPIRISME',      desc:'Chaque kill redonne 3 PV.',                        apply: () => { VAMPIRISM = true; } },
-  { id:'shield',    rare:false, icon:'🛡️', name:'BOUCLIER',         desc:'Absorbe intégralement le prochain coup reçu.',     apply: () => { SHIELD_ACTIVE = true; } },
-  { id:'iframes',   rare:false, icon:'👻', name:'INTANGIBILITÉ',   desc:'Durée d\'invulnérabilité +50% après un hit.',      apply: () => { I_FRAME_BONUS += 20; } },
-  // ── Mobilité & Utilitaires ──
-  { id:'speed',     rare:false, icon:'💨', name:'VITESSE',          desc:'Déplacement +20% plus rapide.',                   apply: () => { state.buffs.speed += 0.2; } },
-  { id:'turbo',     rare:false, icon:'🌪️', name:'TURBO',            desc:'Déplacement +40% plus rapide.',                   apply: () => { state.buffs.speed += 0.4; } },
-  { id:'shrink',    rare:false, icon:'🔵', name:'SILHOUETTE',       desc:'Votre hitbox réduit de 25%.',                     apply: () => { state.player.r = Math.max(5, state.player.r*0.75); } },
-  { id:'scoremult', rare:false, icon:'✨', name:'MULTIPLICATEUR',  desc:'Score par kill +50%.',                             apply: () => { SCORE_MULT += 0.5; } },
+  // ── COMMUN ──────────────────────────────────────────────────────────
+  { id:'damage',    rarity:'common',    maxStacks:6,  icon:'⚡', name:'PUISSANCE',      desc:(n)=>`Dégâts +50%${n>1?' (×'+n+')':''}`,                apply: () => { state.buffs.damage += 0.5; } },
+  { id:'firerate',  rarity:'common',    maxStacks:5,  icon:'🔥', name:'CADENCE',         desc:(n)=>`Cadence +40%${n>1?' (×'+n+')':''}`,               apply: () => { FIRE_RATE_BONUS += 0.4; } },
+  { id:'bulletspd', rarity:'common',    maxStacks:4,  icon:'💫', name:'VÉLOCITÉ',         desc:(n)=>`Balles +30% rapides${n>1?' (×'+n+')':''}`,        apply: () => { BULLET_SPEED_BONUS += 3.5; } },
+  { id:'speed',     rarity:'common',    maxStacks:5,  icon:'💨', name:'VITESSE',          desc:(n)=>`Mouvement +20%${n>1?' (×'+n+')':''}`,             apply: () => { state.buffs.speed += 0.2; } },
+  { id:'turbo',     rarity:'common',    maxStacks:3,  icon:'🌪️', name:'TURBO',            desc:(n)=>`Mouvement +40%${n>1?' (×'+n+')':''}`,             apply: () => { state.buffs.speed += 0.4; } },
+  { id:'maxhp',     rarity:'common',    maxStacks:8,  icon:'❤️', name:'VIE MAX',          desc:(n)=>'+30 PV max + 20 PV soignés',                       apply: () => { state.buffs.maxHp+=30; state.player.maxHp+=30; state.player.hp=Math.min(state.player.hp+20,state.player.maxHp); } },
+  { id:'regen',     rarity:'common',    maxStacks:10, icon:'🧬', name:'RÉGÉNÉRATION',    desc:(n)=>'+20 PV immédiats',                                 apply: () => { state.player.hp = Math.min(state.player.hp+20,state.player.maxHp); } },
+  { id:'shield',    rarity:'common',    maxStacks:3,  icon:'🛡️', name:'BOUCLIER',         desc:(n)=>`+1 charge bouclier (total ${n})`,                  apply: () => { SHIELD_STACKS = Math.min(3,(SHIELD_STACKS||0)+1); SHIELD_ACTIVE=true; } },
+  { id:'iframes',   rarity:'common',    maxStacks:3,  icon:'👻', name:'INTANGIBILITÉ',   desc:(n)=>`Invulnérabilité +${n*50}% après un hit`,           apply: () => { I_FRAME_BONUS += 20; } },
+  { id:'backshot',  rarity:'common',    maxStacks:1,  icon:'🔄', name:'TIR ARRIÈRE',     desc:(n)=>'Projectile inverse à chaque tir',                  apply: () => { BACK_SHOT = true; } },
+  { id:'bigbullet', rarity:'common',    maxStacks:3,  icon:'💥', name:'GROS CALIBRE',    desc:(n)=>`Zone de touche +${n*40}%`,                          apply: () => { BIGGER_BULLETS=true; BIGGER_BULLETS_BONUS=(BIGGER_BULLETS_BONUS||4)+4; } },
+  { id:'freeze',    rarity:'common',    maxStacks:3,  icon:'❄️', name:'GEL',              desc:(n)=>`${Math.min(75,n*25)}% chance de ralentir`,         apply: () => { FREEZE_CHANCE=Math.min(0.75,FREEZE_CHANCE+0.25); } },
+  { id:'scoremult', rarity:'common',    maxStacks:5,  icon:'✨', name:'MULTIPLICATEUR',  desc:(n)=>`Score ×${(1+n*0.5).toFixed(1)}`,                   apply: () => { SCORE_MULT += 0.5; } },
+  { id:'pasregen',  rarity:'common',    maxStacks:1,  icon:'🩺', name:'REGEN PASSIVE',   desc:(n)=>'+1 PV/3s automatiquement',                         apply: () => { PASSIVE_REGEN=true; } },
+  { id:'shrink',    rarity:'common',    maxStacks:2,  icon:'🔵', name:'SILHOUETTE',       desc:(n)=>`Hitbox -${n*25}%`,                                  apply: () => { state.player.r=Math.max(5,state.player.r*0.75); } },
+  { id:'teleport',  rarity:'common',    maxStacks:1,  icon:'📍', name:'TÉLÉPORT',        desc:(n)=>'Touche E : TP à la souris (CD 4s)',                 apply: () => { TELEPORT_UNLOCKED=true; } },
+  { id:'orb1',      rarity:'common',    maxStacks:6,  icon:'🌀', name:'ORBE',             desc:(n)=>`+1 orbe tournant (total ${n}, max 6)`,              apply: () => { ORB_COUNT=Math.min(6,ORB_COUNT+1); } },
+  // ── RARE ────────────────────────────────────────────────────────────
+  { id:'piercing',  rarity:'rare',      maxStacks:1,  icon:'🎯', name:'PERFORATION',     desc:(n)=>'Balles traversent tous les ennemis',               apply: () => { PIERCING=true; } },
+  { id:'triple',    rarity:'rare',      maxStacks:3,  icon:'🔱', name:'TRIPLE TIR',      desc:(n)=>`+${n*2} projectiles en éventail`,                  apply: () => { TRIPLE_SHOT=Math.min(3,TRIPLE_SHOT+1); } },
+  { id:'explode',   rarity:'rare',      maxStacks:3,  icon:'💣', name:'EXPLOSION',       desc:(n)=>`Kills explosent (rayon ${70+(n-1)*20}px)`,         apply: () => { EXPLOSION_ON_KILL=true; EXPLOSION_LEVEL=Math.min(3,(EXPLOSION_LEVEL||0)+1); } },
+  { id:'chain',     rarity:'rare',      maxStacks:3,  icon:'⚡', name:'CHAÎNE ÉCLAIR',   desc:(n)=>`Arc électrique au kill (portée ${160+n*50}px)`,    apply: () => { CHAIN_LIGHTNING=true; CHAIN_LEVEL=Math.min(3,(CHAIN_LEVEL||0)+1); } },
+  { id:'orb2',      rarity:'rare',      maxStacks:3,  icon:'🌌', name:'DOUBLE ORBE',     desc:(n)=>'+2 orbes (max 6)',                                  apply: () => { ORB_COUNT=Math.min(6,ORB_COUNT+2); } },
+  { id:'orbdmg',    rarity:'rare',      maxStacks:3,  icon:'💥', name:'ORBE+ DÉGÂTS',   desc:(n)=>`Orbes +${n*50}% dégâts`,                           apply: () => { if(ORB_DAMAGE_MULT<2.5) ORB_DAMAGE_MULT+=0.5; } },
+  { id:'orbspd',    rarity:'rare',      maxStacks:3,  icon:'🌀', name:'ORBE+ VITESSE',  desc:(n)=>`Orbes +${n*50}% vitesse`,                           apply: () => { if(ORB_SPEED_MULT<2.5) ORB_SPEED_MULT+=0.5; } },
+  { id:'orbsize',   rarity:'rare',      maxStacks:2,  icon:'🔮', name:'ORBE+ TAILLE',   desc:(n)=>`Orbes +${n*50}% taille`,                            apply: () => { if(ORB_SIZE_MULT<2.0) ORB_SIZE_MULT+=0.5; } },
+  { id:'shockwave', rarity:'rare',      maxStacks:1,  icon:'🌊', name:'ONDE DE CHOC',    desc:(n)=>'Onde toutes les 10s repousse les proches',          apply: () => { SHOCKWAVE=true; } },
+  { id:'bullettime',rarity:'rare',      maxStacks:1,  icon:'⏱️', name:'BULLET TIME',     desc:(n)=>'Ennemis ralentissent sous 25% PV',                  apply: () => { BULLET_TIME=true; } },
+  { id:'vampire',   rarity:'rare',      maxStacks:3,  icon:'🩸', name:'VAMPIRISME',      desc:(n)=>`Kill → +${n} PV (max 3 stacks)`,                   apply: () => { if(VAMPIRISM_STACKS<3){ VAMPIRISM=true; VAMPIRISM_STACKS++; } } },
+  { id:'familiar',  rarity:'rare',      maxStacks:1,  icon:'🐾', name:'FAMILIER',        desc:(n)=>'Touche A : invoque un familier (max 3, CD 5s)',     apply: () => { FAMILIAR_UNLOCKED=true; } },
+  // ── LÉGENDAIRE ──────────────────────────────────────────────────────
+  { id:'lifestealer',rarity:'legendary',maxStacks:1,  icon:'💜', name:'LIFE STEALER',   desc:(n)=>'Zone : +1 PV/ennemi proche toutes les 2s',          apply: () => { LIFE_STEALER=true; } },
+  { id:'homing',    rarity:'legendary', maxStacks:1,  icon:'🔮', name:'ŒIL DU CHASSEUR',desc:(n)=>'Projectiles guidés légèrement',                     apply: () => { HOMING=true; } },
+  { id:'minion',    rarity:'legendary', maxStacks:1,  icon:'🐝', name:'ÉCLAT DE NUÉE',  desc:(n)=>'20% chance de spawner un allié au kill',            apply: () => { MINION_SPAWN=true; } },
 ];
 
 let FIRE_RATE_BONUS = 0, BULLET_SPEED_BONUS = 0, SCORE_MULT = 1, I_FRAME_BONUS = 0, FREEZE_CHANCE = 0;
 let PIERCING = false, TRIPLE_SHOT = 0, BIGGER_BULLETS = false, BACK_SHOT = false;
-let EXPLOSION_ON_KILL = false, CHAIN_LIGHTNING = false, VAMPIRISM = false;
-let SHIELD_ACTIVE = false, PASSIVE_REGEN = false;
-let ORB_COUNT = 0, SHOCKWAVE = false, BULLET_TIME = false;
+// (vars declared above via boss system block)
 
 let rerollsLeft = 3;
 
@@ -2836,38 +2856,40 @@ function renderBuffCards() {
     return true;
   });
 
-  const commons    = shuffle(eligible.filter(b => !b.rare));
-  const rares      = shuffle(eligible.filter(b => b.rare));
+  const commons    = shuffle(eligible.filter(b => b.rarity === 'common'));
+  const rares      = shuffle(eligible.filter(b => b.rarity === 'rare'));
+  const legendaries= shuffle(eligible.filter(b => b.rarity === 'legendary'));
 
-  // Weights: 70% common, 30% rare per slot
-  const pool_c = [...commons], pool_r = [...rares];
+  // Weights: 70% common, 25% rare, 5% legendary per slot
+  const pool_c=[...commons], pool_r=[...rares], pool_l=[...legendaries];
   function pickOne() {
-    if (pool_r.length && Math.random() < 0.30) return pool_r.shift();
+    const roll = Math.random();
+    if (roll < 0.05 && pool_l.length) return pool_l.shift();
+    if (roll < 0.30 && pool_r.length) return pool_r.shift();
     if (pool_c.length) return pool_c.shift();
     if (pool_r.length) return pool_r.shift();
+    if (pool_l.length) return pool_l.shift();
     return null;
   }
 
   const chosen = [];
-  for (let i = 0; i < 3; i++) {
-    const b = pickOne();
-    if (b) chosen.push(b);
-  }
+  for (let i = 0; i < 3; i++) { const b = pickOne(); if (b) chosen.push(b); }
+
+  const rarityClass  = { common:'', rare:' rare', legendary:' legendary' };
+  const rarityLabel  = { common:'', rare:' ✦', legendary:' ★★' };
 
   const container = document.getElementById('buff-cards');
   container.innerHTML = '';
   chosen.forEach(b => {
     const stacks = getBuffCount(b.id);
     const card = document.createElement('div');
-    card.className = 'buff-card' + (b.rare ? ' rare' : '');
+    card.className = 'buff-card' + (rarityClass[b.rarity]||'');
     card.style.position = 'relative';
     const stackBadge = stacks > 0
       ? `<span style="position:absolute;top:5px;right:6px;font-family:Orbitron,sans-serif;font-size:9px;font-weight:900;color:var(--neon-cyan)">×${stacks+1}</span>`
       : '';
-    const maxInfo = b.maxStacks
-      ? `<span style="font-size:8px;opacity:0.4"> (max ${b.maxStacks})</span>`
-      : '';
-    card.innerHTML = `${stackBadge}<span class="buff-icon">${b.icon}</span><div class="buff-name">${b.name}${b.rare?' ★':''}${maxInfo}</div><div class="buff-desc">${getBuffDesc(b)}</div>`;
+    const maxInfo = b.maxStacks ? ` <span style="font-size:8px;opacity:0.35">(max ${b.maxStacks})</span>` : '';
+    card.innerHTML = `${stackBadge}<span class="buff-icon">${b.icon}</span><div class="buff-name">${b.name}${rarityLabel[b.rarity]||''}${maxInfo}</div><div class="buff-desc">${getBuffDesc(b)}</div>`;
     card.onclick = () => {
       b.apply();
       recordBuff(b);
@@ -2915,6 +2937,22 @@ function draw() {
   }
 
 
+
+  // Explosion rings
+  if (state.explosions) {
+    state.explosions = state.explosions.filter(ex => {
+      ex.r += ex.maxR / ex.life * 2.5;
+      ex.life--;
+      if (ex.life <= 0) return false;
+      const alpha = ex.life / 20;
+      ctx.strokeStyle = `rgba(255,136,0,${alpha * 0.85})`;
+      ctx.lineWidth = 3 + alpha * 2;
+      ctx.shadowBlur = 14; ctx.shadowColor = '#ff8800';
+      ctx.beginPath(); ctx.arc(ex.x, ex.y, ex.r, 0, Math.PI*2); ctx.stroke();
+      ctx.shadowBlur = 0;
+      return true;
+    });
+  }
 
   // Bullet time tint
   if (state.timeScale && state.timeScale < 1) {
@@ -3146,15 +3184,16 @@ function draw() {
 
   // Orbs
   if (ORB_COUNT > 0) {
+    const orbDrawR = 7 * (ORB_SIZE_MULT || 1);
     for (let oi = 0; oi < ORB_COUNT; oi++) {
       const oa = (state.orbAngle||0) + (oi / ORB_COUNT) * Math.PI * 2;
       const ox = p.x + Math.cos(oa) * 36;
       const oy = p.y + Math.sin(oa) * 36;
       ctx.shadowBlur = 18; ctx.shadowColor = '#ffcc00';
       ctx.fillStyle = '#ffcc00';
-      ctx.beginPath(); ctx.arc(ox, oy, 7, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = 'rgba(255,200,0,0.3)';
-      ctx.beginPath(); ctx.arc(ox, oy, 12, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(ox, oy, orbDrawR, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = 'rgba(255,200,0,0.25)';
+      ctx.beginPath(); ctx.arc(ox, oy, orbDrawR * 1.6, 0, Math.PI*2); ctx.fill();
     }
     ctx.shadowBlur=0;
   }
@@ -3460,13 +3499,14 @@ function startBossFight() {
   state.enemiesToSpawn = 0; state.controlsInverted = 0; state.bossesKilled = [];
   window._gameStartTime = Date.now();
   acquiredBuffs = [];
-  FIRE_RATE_BONUS = 0; PIERCING = false; TRIPLE_SHOT = 0;
-  BIGGER_BULLETS = false; BULLET_SPEED_BONUS = 0; EXPLOSION_ON_KILL = false;
-  VAMPIRISM = false; VAMPIRISM_STACKS = 0; SHIELD_ACTIVE = false; PASSIVE_REGEN = false;
-  I_FRAME_BONUS = 0; SCORE_MULT = 1;
-  ORB_COUNT = 0; ORB_DAMAGE_MULT=1; ORB_SPEED_MULT=1; ORB_SIZE_MULT=1;
-  CHAIN_LIGHTNING = false; SHOCKWAVE = false;
-  BULLET_TIME = false; FREEZE_CHANCE = 0; BACK_SHOT = false;
+  FIRE_RATE_BONUS=0; PIERCING=false; TRIPLE_SHOT=0;
+  BIGGER_BULLETS=false; BIGGER_BULLETS_BONUS=4; BULLET_SPEED_BONUS=0;
+  EXPLOSION_ON_KILL=false; EXPLOSION_LEVEL=0; CHAIN_LIGHTNING=false; CHAIN_LEVEL=0;
+  VAMPIRISM=false; VAMPIRISM_STACKS=0; SHIELD_ACTIVE=false; SHIELD_STACKS=0; PASSIVE_REGEN=false;
+  I_FRAME_BONUS=0; SCORE_MULT=1;
+  ORB_COUNT=0; ORB_DAMAGE_MULT=1; ORB_SPEED_MULT=1; ORB_SIZE_MULT=1;
+  SHOCKWAVE=false; BULLET_TIME=false; FREEZE_CHANCE=0; BACK_SHOT=false;
+  LIFE_STEALER=false; lifeStealerTimer=0;
   ARMOR = false; HOMING = false; MINION_SPAWN = false;
   boss = null; allies = []; familiars = []; bossDropActive = false;
   RESURRECTION = false; WEB_TRAIL=false; FRACTURE=false;
