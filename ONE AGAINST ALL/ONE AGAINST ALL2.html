@@ -1277,7 +1277,7 @@
       </div>
       <div id="bossfight-buff-col">
         <div class="bf-col-title">POUVOIRS DE DÉPART</div>
-        <div id="bossfight-buff-counter"><span class="used">0</span> <span class="total">/ 3 SÉLECTIONNÉS</span></div>
+        <div id="bossfight-buff-counter"><span class="used">0</span> <span class="total">/ 10 SÉLECTIONNÉS</span></div>
         <div id="bossfight-buff-grid"></div>
       </div>
     </div>
@@ -3392,6 +3392,7 @@ function renderBFStageList() {
       }
       renderBFStageList();
       renderBFBuffGrid();
+      updateBFCounter();
       updateBFStagePreview();
       updateBFStartBtn();
     };
@@ -3409,8 +3410,7 @@ function updateBFStagePreview() {
   const hpText = bfSelectedBoss
     ? getBossHpForStage(bfSelectedStage, BOSS_DEFS[bfSelectedBoss]).toLocaleString() + ' PV'
     : `×${bfSelectedStage/10*100}% PV de base`;
-  const powers = BF_STAGE_POWERS[bfSelectedStage] || 3;
-  el.innerHTML = `<strong style="color:${color}">ÉTAGE ${bfSelectedStage}</strong>${label}<br><span style="color:${color};opacity:0.8">${hpText}</span><br><span style="color:rgba(0,255,221,0.6);font-size:8px">${powers} POUVOIRS</span>`;
+  el.innerHTML = `<strong style="color:${color}">ÉTAGE ${bfSelectedStage}</strong>${label}<br><span style="color:${color};opacity:0.8">${hpText}</span><br><span style="color:rgba(0,255,221,0.6);font-size:8px">${bfSelectedStage} POUVOIRS</span>`;
 }
 
 function renderBFBuffGrid() {
