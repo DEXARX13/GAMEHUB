@@ -1349,6 +1349,18 @@ let state = {
   buffs: { maxHp: 100, damage: 1, speed: 1 },
 };
 
+
+// ─── GLOBAL FLAGS (declared early to avoid temporal dead zone) ──
+let BOSSFIGHT_MODE = false;
+let boss = null;
+let bossDropActive = false;
+let allies = [], familiars = [];
+let acquiredBuffs = [];
+let loopId = null;
+let countdownInterval = null, countingDown = false;
+let pendingRun = null;
+let loopCount = 0;
+
 // Input
 document.addEventListener('keydown', e => {
   state.keys[e.key.toLowerCase()] = true;
@@ -1360,7 +1372,7 @@ document.addEventListener('keydown', e => {
 document.addEventListener('keyup', e => { state.keys[e.key.toLowerCase()] = false; });
 
 // Buff acquisition history for the pause panel
-let acquiredBuffs = []; // { id, name, icon, desc, rare, count }
+// acquiredBuffs declared early
 
 function recordBuff(b) {
   const existing = acquiredBuffs.find(x => x.id === b.id);
@@ -1382,8 +1394,7 @@ function resumeGame() {
   });
 }
 
-let countingDown = false;
-let countdownInterval = null;
+// countingDown, countdownInterval declared early
 
 function startCountdown(cb) {
   if (countingDown) return;
@@ -2465,8 +2476,7 @@ const BOSS_DEFS = {
   }
 };
 
-let boss = null; // active boss object
-let bossDropActive = false; // prevents wave-clear during drop popup
+// boss, bossDropActive declared early
 let ARMOR = false, HOMING = false, MINION_SPAWN = false;
 let RESURRECTION = false;
 let WEB_TRAIL = false;
@@ -2483,8 +2493,8 @@ let LIFE_STEALER = false, lifeStealerTimer = 0;
 let SURGE_UNLOCKED = false, SURGE_CHARGE = 0, SURGE_MAX = 20;
 let TELEPORT_UNLOCKED = false, TELEPORT_CD = 0, TELEPORT_CD_MAX = 240;
 let FAMILIAR_UNLOCKED = false, FAMILIAR_CD = 0, FAMILIAR_CD_MAX = 300;
-let familiars = [];
-let allies = []; // active mini-allies
+// familiars declared early
+// allies declared early
 
 function isBossWave(w) { return w % 10 === 0; }
 
@@ -3263,7 +3273,7 @@ function draw() {
   }
 }
 
-let loopId = null;
+// loopId declared early
 function loop() {
   update();
   draw();
@@ -3271,7 +3281,7 @@ function loop() {
 }
 // ─── PRACTICE MODE ──────────────────────────────────────────────
 
-let BOSSFIGHT_MODE = false;
+// BOSSFIGHT_MODE declared early
 let bfSelectedBoss = null;
 let bfSelectedStage = 10; // default stage 10
 let bfPicks = {};
@@ -3704,7 +3714,7 @@ function buildRunSnapshot() {
   };
 }
 
-let pendingRun = null;
+// pendingRun declared early
 
 function showNameInput() {
   pendingRun = buildRunSnapshot();
