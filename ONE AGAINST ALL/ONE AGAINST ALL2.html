@@ -477,6 +477,12 @@
     line-height: 1.5;
   }
   .active-buff-row.rare-buff .active-buff-desc { color: rgba(204,68,255,0.5); }
+  .active-buff-row.legendary-buff {
+    border-color: rgba(255,215,0,0.25);
+    background: rgba(255,215,0,0.03);
+  }
+  .active-buff-row.legendary-buff .active-buff-name { color: #ffd700; }
+  .active-buff-row.legendary-buff .active-buff-desc { color: rgba(255,215,0,0.5); }
   .active-buff-count {
     font-family: 'Orbitron', sans-serif;
     font-size: 13px;
@@ -1075,6 +1081,16 @@
   .pbt.pbt-rare:hover { border-color: rgba(204,68,255,0.3); background: rgba(204,68,255,0.05); }
   .pbt.pbt-rare.pbt-on { border-color: var(--neon-purple); background: rgba(204,68,255,0.09); box-shadow: 0 0 6px rgba(204,68,255,0.12); }
   .pbt.pbt-disabled { opacity: 0.28; cursor: not-allowed; }
+  .pbt.pbt-legendary { border-color: rgba(255,215,0,0.2); }
+  .pbt.pbt-legendary:hover { border-color: rgba(255,215,0,0.5); background: rgba(255,215,0,0.04); }
+  .pbt.pbt-legendary.pbt-on { border-color: #ffd700; background: rgba(255,215,0,0.08); }
+  .pbt.pbt-legendary .pbt-name { color: rgba(255,215,0,0.8); }
+  .pbt.pbt-legendary.pbt-on .pbt-name { color: #ffd700; }
+  .pbt.pbt-bossdrop { border-color: rgba(255,68,68,0.2); }
+  .pbt.pbt-bossdrop:hover { border-color: rgba(255,68,68,0.5); background: rgba(255,68,68,0.04); }
+  .pbt.pbt-bossdrop.pbt-on { border-color: #ff4444; background: rgba(255,68,68,0.08); }
+  .pbt.pbt-bossdrop .pbt-name { color: rgba(255,100,100,0.8); }
+  .pbt.pbt-bossdrop.pbt-on .pbt-name { color: #ff6666; }
   .pbt-icon { font-size: 14px; display: block; margin-bottom: 2px; }
   .pbt-name { font-family: 'Orbitron', sans-serif; font-size: 5px; font-weight: 700; letter-spacing: 0.3px; color: rgba(255,136,0,0.65); line-height: 1.2; }
   .pbt.pbt-rare .pbt-name { color: rgba(204,68,255,0.8); }
@@ -1340,7 +1356,6 @@
   </div>
   <div id="sb-list"><div id="sb-empty">AUCUNE PARTIE SAUVEGARDÉE<br>JOUEZ ET INSCRIVEZ-VOUS !</div></div>
   <div id="sb-footer">
-    <button id="sb-clear-btn" onclick="clearScores()">⚠ EFFACER TOUS LES SCORES</button>
   </div>
 </div>
 
@@ -1506,7 +1521,7 @@ function populatePausePanel() {
   }
   acquiredBuffs.forEach(b => {
     const row = document.createElement('div');
-    row.className = 'active-buff-row' + (b.rarity === 'legendary' ? ' rare-buff' : b.rarity === 'rare' ? ' rare-buff' : b.rare ? ' rare-buff' : '');
+    row.className = 'active-buff-row' + (b.rarity === 'legendary' ? ' legendary-buff' : (b.rarity === 'rare' || b.rare) ? ' rare-buff' : '');
     row.innerHTML = `
       <span class="active-buff-icon">${b.icon}</span>
       <div class="active-buff-info">
@@ -1571,7 +1586,7 @@ function startGame() {
   boss = null; allies = []; familiars = []; bossDropActive = false;
   RESURRECTION = false; WEB_TRAIL=false; FRACTURE=false;
   SURCHAUFFE=false; surchauffeLevel=0; surchauffeTimer=0;
-  DARK_VISION=false; SHADOW_DODGE=false; CLONE_ACTIVE=false; CLONE_TIMER=0;
+  DARK_VISION=false; SHADOW_DODGE=false; CLONE_ACTIVE=false; CLONE_TIMER=0; CLONE_RESPAWN_TIMER=0; cloneShootTimer=0;
   SHIELD_STACKS=0; BIGGER_BULLETS_BONUS=4;
   EXPLOSION_LEVEL=0; CHAIN_LEVEL=0;
   LIFE_STEALER=false; lifeStealerTimer=0;
@@ -1918,10 +1933,59 @@ function update() {
   }
   if(state.lifeStealPulse>0) state.lifeStealPulse-=0.05;
 
-  // Clone: ghost that mirrors player shots
+  // Clone system
   if (CLONE_ACTIVE) {
     CLONE_TIMER--;
-    if (CLONE_TIMER <= 0) CLONE_ACTIVE=false;
+    if (CLONE_TIMER <= 0) {
+      CLONE_ACTIVE = false;
+      CLONE_RESPAWN_TIMER = CLONE_RESPAWN_CD; // start 15s respawn countdown
+    } else {
+      // Clone position (mirror of player)
+      const cloneX = W - p.x;
+      const cloneY = H - p.y;
+
+      cloneShootTimer++;
+
+      // Find nearest enemy to clone
+      let nearestEnemy = null, nearestDist = 9999;
+      state.enemies.forEach(e => {
+        const d = Math.hypot(e.x - cloneX, e.y - cloneY);
+        if (d < nearestDist) { nearestDist = d; nearestEnemy = e; }
+      });
+      if (boss) {
+        const bd = Math.hypot(boss.x - cloneX, boss.y - cloneY);
+        if (bd < nearestDist) { nearestDist = bd; nearestEnemy = boss; }
+      }
+
+      // Auto-aim at nearest enemy every 25 frames
+      if (nearestEnemy && cloneShootTimer >= 25) {
+        cloneShootTimer = 0;
+        const dx = nearestEnemy.x - cloneX, dy = nearestEnemy.y - cloneY;
+        const dl = Math.sqrt(dx*dx+dy*dy)||1;
+        const spd = 12 + BULLET_SPEED_BONUS;
+        state.bullets.push({ x:cloneX, y:cloneY, vx:dx/dl*spd, vy:dy/dl*spd,
+          r:4, damage:state.buffs.damage*0.6, color:'rgba(180,180,255,0.8)', life:90, owner:'player' });
+      }
+
+      // Mirror player shots — when player fires, clone fires mirrored direction
+      if (state.shooting && state.shootCooldown === 0 && nearestEnemy) {
+        const dx = nearestEnemy.x - cloneX, dy = nearestEnemy.y - cloneY;
+        const dl = Math.sqrt(dx*dx+dy*dy)||1;
+        state.bullets.push({ x:cloneX, y:cloneY, vx:-dx/dl*(12+BULLET_SPEED_BONUS), vy:-dy/dl*(12+BULLET_SPEED_BONUS),
+          r:4, damage:state.buffs.damage*0.4, color:'rgba(150,150,255,0.7)', life:90, owner:'player' });
+      }
+    }
+  } else if (CLONE_TIMER <= 0 && (CLONE_ACTIVE === false) && state.phase === 'playing') {
+    // Respawn countdown — only if clone was ever obtained
+    if (CLONE_RESPAWN_TIMER > 0) {
+      CLONE_RESPAWN_TIMER--;
+      if (CLONE_RESPAWN_TIMER <= 0) {
+        CLONE_ACTIVE = true;
+        CLONE_TIMER = 480; // 8s
+        cloneShootTimer = 0;
+        particles(W - p.x, H - p.y, '#aaaaff', 12);
+      }
+    }
   }
 
   // Passive regen tick
@@ -2424,7 +2488,7 @@ const BOSS_DEFS = {
     speed: 2.5,
     intro: { label: '⚠ BOSS FINAL · VAGUE 100 ⚠', color: '#ffffff' },
     drop: { id:'clone', icon:'🪞', name:'CLONE', desc:'Un fantôme de vous tire en miroir pendant 8s.', rare:true,
-      apply: () => { CLONE_ACTIVE=true; CLONE_TIMER=480; } },
+      apply: () => { CLONE_ACTIVE=true; CLONE_TIMER=480; cloneShootTimer=0; CLONE_RESPAWN_TIMER=CLONE_RESPAWN_CD; } },
     initAI: (b) => {
       b.phase = 'stalk';      // stalk | vanish | ambush
       b.phaseTimer = 0;
@@ -2534,6 +2598,10 @@ const BOSS_DEFS = {
 // let ARMOR = false, HOMING = false, MINION_SPAWN = false; (declared early)
 // let SURCHAUFFE = false, surchauffeTimer = 0, surchauffeLevel = 0; (declared early)
 // let CLONE_ACTIVE = false, CLONE_TIMER = 0; (declared early)
+// Clone respawn & shoot
+let CLONE_RESPAWN_TIMER = 0;
+const CLONE_RESPAWN_CD = 900; // 15s at 60fps
+let cloneShootTimer = 0;
 // SHIELD_STACKS declared early
 // let EXPLOSION_LEVEL = 0, CHAIN_LEVEL = 0; (declared early)
 // let LIFE_STEALER = false, lifeStealerTimer = 0; (declared early)
@@ -3343,7 +3411,11 @@ function draw() {
       lines.push({ text: full ? `🐾 FAMILIER (A)  MAX [3/3]` : ready ? `🐾 FAMILIER (A)  PRÊT [${familiars.length}/3]` : `🐾 FAMILIER (A)  ${(FAMILIAR_CD/60).toFixed(1)}s [${familiars.length}/3]`, color: ready ? 'rgba(255,170,0,0.95)' : 'rgba(255,170,0,0.35)' });
     }
     if (CLONE_ACTIVE && CLONE_TIMER > 0) {
-      lines.push({ text: `🪞 CLONE  ${(CLONE_TIMER/60).toFixed(1)}s`, color: 'rgba(200,200,200,0.9)' });
+      lines.push({ text: `🪞 CLONE  ${(CLONE_TIMER/60).toFixed(1)}s`, color: 'rgba(180,180,255,0.9)' });
+    } else if (!CLONE_ACTIVE && CLONE_RESPAWN_TIMER > 0) {
+      lines.push({ text: `🪞 CLONE  respawn ${(CLONE_RESPAWN_TIMER/60).toFixed(1)}s`, color: 'rgba(180,180,255,0.35)' });
+    } else if (!CLONE_ACTIVE && CLONE_RESPAWN_TIMER <= 0 && CLONE_TIMER === 0 && (CLONE_ACTIVE === false)) {
+      // Don't show if never obtained
     }
     if (SHOCKWAVE) {
       const swLeft = Math.max(0, 600 - (state.shockwaveTimer || 0));
@@ -3444,25 +3516,23 @@ const BOSSFIGHT_BUFF_LIST = [
   { id:'orbspd',     rarity:'rare',      icon:'🌀', name:'ORBE+ VITESSE', apply: () => { if(ORB_SPEED_MULT<2.5) ORB_SPEED_MULT+=0.5; } },
   { id:'orbsize',    rarity:'rare',      icon:'🔮', name:'ORBE+ TAILLE',  apply: () => { if(ORB_SIZE_MULT<2.0) ORB_SIZE_MULT+=0.5; } },
   { id:'shockwave',  rarity:'rare',      icon:'🌊', name:'ONDE CHOC',     apply: () => { SHOCKWAVE=true; } },
-  { id:'bullettime', rarity:'rare',      icon:'⏱️', name:'BULLET TIME',   apply: () => { BULLET_TIME=true; } },
-  { id:'vampire',    rarity:'rare',      icon:'🩸', name:'VAMPIRISME',    apply: () => { if(VAMPIRISM_STACKS<3){ VAMPIRISM=true; VAMPIRISM_STACKS++; } } },
-  { id:'familiar',   rarity:'rare',      icon:'🐾', name:'FAMILIER',      apply: () => { FAMILIAR_UNLOCKED=true; } },
+  { id:'bullettime', rarity:'legendary', icon:'⏱️', name:'BULLET TIME',   apply: () => { BULLET_TIME=true; } },
+  { id:'vampire',    rarity:'legendary', icon:'🩸', name:'VAMPIRISME',    apply: () => { if(VAMPIRISM_STACKS<3){ VAMPIRISM=true; VAMPIRISM_STACKS++; } } },
   // ── LÉGENDAIRES (coût 4) ──
   { id:'lifestealer',rarity:'legendary', icon:'💜', name:'LIFE STEALER',  apply: () => { LIFE_STEALER=true; } },
-  { id:'homing',     rarity:'legendary', icon:'🔮', name:'ŒIL CHASSEUR',  apply: () => { HOMING=true; } },
-  { id:'minion',     rarity:'legendary', icon:'🐝', name:'ÉCLAT DE NUÉE', apply: () => { MINION_SPAWN=true; } },
   // ── DROPS BOSS (coût 5) ──
   { id:'armor',      rarity:'boss_drop', icon:'🦾', name:'ARMURE',         apply: () => { ARMOR=true; } },
+  { id:'teleport_bd', rarity:'boss_drop', icon:'📍', name:'TÉLÉPORT',       apply: () => { TELEPORT_UNLOCKED=true; } },
+  { id:'familiar_bd', rarity:'boss_drop', icon:'🐾', name:'FAMILIER',       apply: () => { FAMILIAR_UNLOCKED=true; } },
+  { id:'homing_bd',   rarity:'boss_drop', icon:'🔮', name:'ŒIL CHASSEUR',   apply: () => { HOMING=true; } },
+  { id:'minion_bd',   rarity:'boss_drop', icon:'🐝', name:'ÉCLAT DE NUÉE',  apply: () => { MINION_SPAWN=true; } },
   { id:'surge',      rarity:'boss_drop', icon:'⚡', name:'DÉCHARGE',       apply: () => { SURGE_UNLOCKED=true; } },
-  { id:'homing_bd',  rarity:'boss_drop', icon:'🔮', name:'ŒIL CHASSEUR',   apply: () => { HOMING=true; } },
-  { id:'familiar_bd',rarity:'boss_drop', icon:'🐾', name:'FAMILIER',       apply: () => { FAMILIAR_UNLOCKED=true; } },
-  { id:'minion_bd',  rarity:'boss_drop', icon:'🐝', name:'ÉCLAT DE NUÉE',  apply: () => { MINION_SPAWN=true; } },
   { id:'web',        rarity:'boss_drop', icon:'🕸️', name:'FILET',           apply: () => { WEB_TRAIL=true; } },
   { id:'fracture',   rarity:'boss_drop', icon:'💠', name:'FRACTURE',        apply: () => { FRACTURE=true; } },
   { id:'surchauffe', rarity:'boss_drop', icon:'🔥', name:'SURCHAUFFE',      apply: () => { SURCHAUFFE=true; } },
   { id:'ombre',      rarity:'boss_drop', icon:'🌒', name:'OMBRE',           apply: () => { SHADOW_DODGE=true; } },
   { id:'resurrection',rarity:'boss_drop',icon:'💚', name:'RÉSURRECTION',   apply: () => { RESURRECTION=true; } },
-  { id:'clone',      rarity:'boss_drop', icon:'🪞', name:'CLONE',           apply: () => { CLONE_ACTIVE=true; CLONE_TIMER=480; } },
+  { id:'clone',      rarity:'boss_drop', icon:'🪞', name:'CLONE',           apply: () => { CLONE_ACTIVE=true; CLONE_TIMER=480; cloneShootTimer=0; CLONE_RESPAWN_TIMER=CLONE_RESPAWN_CD; } },
 ];
 
 function openBossFight() {
@@ -3619,9 +3689,8 @@ function renderBFBuffGrid() {
       const col = rarityColor[b.rarity] || rarityColor.common;
 
       const tile = document.createElement('div');
-      tile.className = 'pbt' + (b.rarity==='rare'?' pbt-rare':'') + (count>0?' pbt-on':'') + (disabled?' pbt-disabled':'');
-      if (b.rarity==='legendary') { tile.style.borderColor='rgba(255,215,0,0.3)'; tile.style.color='rgba(255,215,0,0.8)'; }
-      if (b.rarity==='boss_drop') { tile.style.borderColor='rgba(255,68,68,0.35)'; tile.style.color='rgba(255,100,100,0.9)'; }
+      const rarClass = b.rarity==='rare' ? ' pbt-rare' : b.rarity==='legendary' ? ' pbt-legendary' : b.rarity==='boss_drop' ? ' pbt-bossdrop' : '';
+      tile.className = 'pbt' + rarClass + (count>0?' pbt-on':'') + (disabled?' pbt-disabled':'');
 
       tile.innerHTML = `
         <span class="pbt-icon">${b.icon}</span>
@@ -3728,7 +3797,7 @@ function startBossFight() {
   boss = null; allies = []; familiars = []; bossDropActive = false;
   RESURRECTION = false; WEB_TRAIL=false; FRACTURE=false;
   SURCHAUFFE=false; surchauffeLevel=0; surchauffeTimer=0;
-  DARK_VISION=false; SHADOW_DODGE=false; CLONE_ACTIVE=false; CLONE_TIMER=0;
+  DARK_VISION=false; SHADOW_DODGE=false; CLONE_ACTIVE=false; CLONE_TIMER=0; CLONE_RESPAWN_TIMER=0; cloneShootTimer=0;
   SHIELD_STACKS=0; BIGGER_BULLETS_BONUS=4;
   EXPLOSION_LEVEL=0; CHAIN_LEVEL=0;
   LIFE_STEALER=false; lifeStealerTimer=0;
