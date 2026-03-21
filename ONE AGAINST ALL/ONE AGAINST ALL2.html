@@ -1071,6 +1071,65 @@
     pointer-events: none; z-index: 4;
   }
   #bossfight-badge.hidden { display: none; }
+  /* ── BOSS FIGHT STAGE SELECTOR ─────────────────── */
+  #bossfight-stage-col { width: 140px; flex-shrink: 0; }
+
+  .bf-stage-btn {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 7px 10px;
+    margin-bottom: 5px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: transparent;
+    cursor: pointer;
+    transition: all 0.15s;
+    width: 100%;
+    text-align: left;
+  }
+  .bf-stage-btn:hover { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.2); }
+  .bf-stage-btn.selected { border-color: currentColor; background: rgba(255,255,255,0.06); }
+
+  .bf-stage-num {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px; font-weight: 900; letter-spacing: 2px;
+  }
+  .bf-stage-hp {
+    font-size: 8px; letter-spacing: 1px; opacity: 0.5;
+  }
+  .bf-stage-btn.selected .bf-stage-hp { opacity: 0.9; }
+
+  /* Stage difficulty color scale */
+  .bf-stage-btn[data-tier="1"] { color: #aaffaa; }
+  .bf-stage-btn[data-tier="2"] { color: #ffdd44; }
+  .bf-stage-btn[data-tier="3"] { color: #ff8800; }
+  .bf-stage-btn[data-tier="4"] { color: #ff4400; }
+  .bf-stage-btn[data-tier="5"] { color: #ff0066; }
+  .bf-stage-btn[data-tier="6"] { color: #cc44ff; }
+  .bf-stage-btn[data-tier="7"] { color: #aa00ff; }
+  .bf-stage-btn[data-tier="8"] { color: #ffffff; }
+  .bf-stage-btn[data-tier="9"] { color: #88ffff; }
+  .bf-stage-btn[data-tier="10"]{ color: #ffd700; text-shadow: 0 0 10px #ffd700; }
+
+  /* Selected stage preview */
+  #bf-stage-preview {
+    margin-top: 10px;
+    padding: 8px 10px;
+    border: 1px solid rgba(255,255,255,0.08);
+    font-size: 9px;
+    letter-spacing: 1px;
+    color: rgba(255,255,255,0.5);
+    text-align: center;
+    line-height: 1.8;
+  }
+  #bf-stage-preview strong {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 13px;
+    font-weight: 900;
+    display: block;
+    margin-bottom: 2px;
+  }
+
 </style>
 </head>
 <body>
@@ -1197,11 +1256,16 @@
   <!-- Practice setup screen -->
   <div id="bossfight-screen" class="hidden">
     <h2>BOSS FIGHT</h2>
-    <p>CHOISISSEZ VOTRE BOSS ET 10 POUVOIRS — PUIS AFFRONTEZ-LE</p>
+    <p>CHOISISSEZ UN BOSS, UN ÉTAGE ET 10 POUVOIRS</p>
     <div id="bossfight-layout">
       <div id="bossfight-boss-col">
-        <div class="bf-col-title">BOSS À AFFRONTER</div>
+        <div class="bf-col-title">BOSS</div>
         <div id="bossfight-boss-list"></div>
+      </div>
+      <div id="bossfight-stage-col">
+        <div class="bf-col-title">ÉTAGE</div>
+        <div id="bossfight-stage-list"></div>
+        <div id="bf-stage-preview">—</div>
       </div>
       <div id="bossfight-buff-col">
         <div class="bf-col-title">POUVOIRS DE DÉPART</div>
@@ -1454,7 +1518,7 @@ function startGame() {
   boss = null; allies = []; familiars = [];
   RESURRECTION = false; WEB_TRAIL=false; FRACTURE=false;
   SURCHAUFFE=false; surchauffeLevel=0; surchauffeTimer=0;
-  DARK_VISION=false; CLONE_ACTIVE=false; CLONE_TIMER=0;
+  DARK_VISION=false; SHADOW_DODGE=false; CLONE_ACTIVE=false; CLONE_TIMER=0;
   SHIELD_STACKS=0; BIGGER_BULLETS_BONUS=4;
   EXPLOSION_LEVEL=0; CHAIN_LEVEL=0;
   LIFE_STEALER=false; lifeStealerTimer=0;
@@ -1748,6 +1812,12 @@ function update() {
     if (b.life<=0||b.x<0||b.x>W||b.y<0||b.y>H) { state.enemyBullets.splice(bi,1); continue; }
     const dx2=b.x-p.x, dy2=b.y-p.y;
     if (Math.sqrt(dx2*dx2+dy2*dy2) < p.r+b.r && p.iframes<=0) {
+      // Shadow dodge: 25% chance to avoid
+      if (SHADOW_DODGE && Math.random() < 0.25) {
+        particles(p.x, p.y, '#9900cc', 5);
+        state.enemyBullets.splice(bi,1);
+        continue;
+      }
       if (SHIELD_ACTIVE) {
         SHIELD_ACTIVE = false;
         p.iframes = 60;
@@ -2131,28 +2201,54 @@ const BOSS_DEFS = {
   berserk: {
     name: 'LE BERSERK',
     color: '#ff4400',
-    r: 26,
-    hpBase: 150,
-    speed: 1.0,
+    r: 28,
+    hpBase: 260,
+    speed: 2.2,
     intro: { label: '⚠ BOSS ⚠', color: '#ff4400' },
     drop: { id:'surchauffe', icon:'🔥', name:'SURCHAUFFE', desc:'Dégâts +10%/s de tir continu (max ×3).', rare:true,
       apply: () => { SURCHAUFFE=true; } },
-    initAI: (b) => { b.rage=0; b.lastDmgTimer=0; b.spinTimer=0; b.spinAngle=0; },
+    initAI: (b) => { b.rage=0; b.lastDmgTimer=0; b.spinTimer=0; b.spinAngle=0; b.chargeTimer=0; b.charging=false; b.chargeVx=0; b.chargeVy=0; b.chargeLife=0; },
     updateAI: (b, p) => {
+      // Rage decays slowly when not hit
       b.lastDmgTimer++;
-      if(b.lastDmgTimer>60) b.rage=Math.max(0,b.rage-0.3);
-      const rageMult=1+(b.rage/100)*2.5;
+      if(b.lastDmgTimer > 90) b.rage = Math.max(0, b.rage - 0.5);
+
+      const rageMult = 1 + (b.rage/100) * 3.5; // up to ×4.5 speed at full rage
       const dx=p.x-b.x, dy=p.y-b.y, d=Math.sqrt(dx*dx+dy*dy)||1;
-      b.x+=dx/d*b.speed*rageMult; b.y+=dy/d*b.speed*rageMult;
-      b.x=Math.max(b.r,Math.min(W-b.r,b.x)); b.y=Math.max(b.r,Math.min(H-b.r,b.y));
-      if(b.rage>60){
+
+      if (b.charging) {
+        b.x += b.chargeVx * 11;
+        b.y += b.chargeVy * 11;
+        b.chargeLife--;
+        particles(b.x, b.y, '#ff4400', 3);
+        b.x=Math.max(b.r,Math.min(W-b.r,b.x)); b.y=Math.max(b.r,Math.min(H-b.r,b.y));
+        if(b.chargeLife<=0){ b.charging=false; b.chargeTimer=80; }
+      } else {
+        b.x+=dx/d*b.speed*rageMult; b.y+=dy/d*b.speed*rageMult;
+        b.x=Math.max(b.r,Math.min(W-b.r,b.x)); b.y=Math.max(b.r,Math.min(H-b.r,b.y));
+        // Charge attack when enraged
+        if(b.rage > 50) {
+          b.chargeTimer--;
+          if(b.chargeTimer <= 0) {
+            b.charging=true; b.chargeVx=dx/d; b.chargeVy=dy/d; b.chargeLife=22;
+            b.chargeTimer=100;
+            particles(b.x, b.y, '#ff4400', 14);
+          }
+        }
+      }
+
+      // Always shoot at full rage, spiral at high rage
+      if(b.rage > 30) {
         b.spinTimer++;
-        if(b.spinTimer>=20){
-          b.spinTimer=0; b.spinAngle+=0.8;
-          for(let i=0;i<3;i++){
-            const a=b.spinAngle+(i/3)*Math.PI*2;
-            state.enemyBullets.push({x:b.x,y:b.y,vx:Math.cos(a)*5,vy:Math.sin(a)*5,r:5,
-              damage:Math.round(12*(b.dmgMult||1)),color:'#ff4400',life:70,owner:'enemy'});
+        const interval = b.rage > 70 ? 12 : 22;
+        if(b.spinTimer >= interval){
+          b.spinTimer=0; b.spinAngle += b.rage > 70 ? 1.2 : 0.6;
+          const count = b.rage > 70 ? 5 : 3;
+          for(let i=0;i<count;i++){
+            const a=b.spinAngle+(i/count)*Math.PI*2;
+            const spd = 4 + (b.rage/100)*4;
+            state.enemyBullets.push({x:b.x,y:b.y,vx:Math.cos(a)*spd,vy:Math.sin(a)*spd,r:5,
+              damage:Math.round(10*(b.dmgMult||1)),color:'#ff4400',life:75,owner:'enemy'});
           }
         }
       }
@@ -2167,8 +2263,8 @@ const BOSS_DEFS = {
     hpBase: 130,
     speed: 1.4,
     intro: { label: '⚠ BOSS ⚠', color: '#9900cc' },
-    drop: { id:'darkvision', icon:'🌑', name:'VISION NOCTURNE', desc:'Vous voyez dans l\'obscurité totale.', rare:true,
-      apply: () => { DARK_VISION=true; } },
+    drop: { id:'ombre', icon:'🌒', name:'OMBRE', desc:'25% de chance d\'esquiver automatiquement un projectile ennemi.', rare:true,
+      apply: () => { SHADOW_DODGE = true; } },
     initAI: (b) => { b.darkTimer=0; b.darkness=0; b.shootTimer=0; b.darkPhase=false; },
     updateAI: (b, p) => {
       const dx=p.x-b.x, dy=p.y-b.y, d=Math.sqrt(dx*dx+dy*dy)||1;
@@ -2239,19 +2335,45 @@ const BOSS_DEFS = {
     intro: { label: '⚠ BOSS FINAL · VAGUE 100 ⚠', color: '#ffffff' },
     drop: { id:'clone', icon:'🪞', name:'CLONE', desc:'Un fantôme de vous tire en miroir pendant 8s.', rare:true,
       apply: () => { CLONE_ACTIVE=true; CLONE_TIMER=480; } },
-    initAI: (b) => { b.mirrorTimer=0; },
+    initAI: (b) => { b.mirrorTimer=0; b.burstTimer=0; },
     updateAI: (b, p) => {
-      const targetX=W-p.x, targetY=H-p.y;
+      // Mirror position relative to center — teleport instantly to mirror
+      const targetX = W - p.x;
+      const targetY = H - p.y;
       const ddx=targetX-b.x, ddy=targetY-b.y, dd=Math.sqrt(ddx*ddx+ddy*ddy)||1;
-      b.x+=ddx/dd*b.speed*1.5; b.y+=ddy/dd*b.speed*1.5;
-      b.x=Math.max(b.r,Math.min(W-b.r,b.x)); b.y=Math.max(b.r,Math.min(H-b.r,b.y));
+      // Snap fast to mirror position
+      b.x += ddx/dd * Math.min(dd, b.speed * 4);
+      b.y += ddy/dd * Math.min(dd, b.speed * 4);
+      b.x=Math.max(b.r,Math.min(W-b.r,b.x));
+      b.y=Math.max(b.r,Math.min(H-b.r,b.y));
+
+      // Main shot toward player every 25 frames
       b.mirrorTimer++;
-      if(b.mirrorTimer>=30){
+      if(b.mirrorTimer >= 25){
         b.mirrorTimer=0;
         const dx=p.x-b.x, dy=p.y-b.y, dl=Math.sqrt(dx*dx+dy*dy)||1;
-        const spd=Math.min(7,3+state.wave*0.03);
-        state.enemyBullets.push({x:b.x,y:b.y,vx:dx/dl*spd,vy:dy/dl*spd,r:5,
-          damage:Math.round(8*(b.dmgMult||1)),color:'#cccccc',life:80,owner:'enemy'});
+        const spd = Math.min(9, 5 + state.wave*0.03);
+        const dmg = Math.round(9*(b.dmgMult||1));
+        // Main bullet toward player
+        state.enemyBullets.push({x:b.x,y:b.y,vx:dx/dl*spd,vy:dy/dl*spd,r:5,damage:dmg,color:'#ffffff',life:90,owner:'enemy'});
+        // Two spread bullets
+        const ang = Math.atan2(dy, dx);
+        [-0.3, 0.3].forEach(spread => {
+          state.enemyBullets.push({x:b.x,y:b.y,
+            vx:Math.cos(ang+spread)*spd*0.85, vy:Math.sin(ang+spread)*spd*0.85,
+            r:4, damage:Math.round(dmg*0.7), color:'#cccccc', life:85, owner:'enemy'});
+        });
+      }
+
+      // Burst of 8 radial bullets every 3s
+      b.burstTimer++;
+      if(b.burstTimer >= 180){
+        b.burstTimer=0;
+        for(let i=0;i<8;i++){
+          const a=(i/8)*Math.PI*2;
+          state.enemyBullets.push({x:b.x,y:b.y,vx:Math.cos(a)*5,vy:Math.sin(a)*5,
+            r:4,damage:Math.round(7*(b.dmgMult||1)),color:'#aaaaaa',life:80,owner:'enemy'});
+        }
       }
     }
   }
@@ -2264,6 +2386,7 @@ let WEB_TRAIL = false;
 let FRACTURE = false;
 let SURCHAUFFE = false, surchauffeTimer = 0, surchauffeLevel = 0;
 let DARK_VISION = false;
+let SHADOW_DODGE = false;
 let CLONE_ACTIVE = false, CLONE_TIMER = 0;
 let VAMPIRISM_STACKS = 0;
 let ORB_DAMAGE_MULT = 1.0, ORB_SPEED_MULT = 1.0, ORB_SIZE_MULT = 1.0;
@@ -2922,7 +3045,7 @@ function loop() {
 
 let BOSSFIGHT_MODE = false;
 let bfSelectedBoss = null;
-// tracks picks: buffId -> count
+let bfSelectedStage = 10; // default stage 10
 let bfPicks = {};
 const BOSSFIGHT_MAX = 10;
 
@@ -2980,18 +3103,76 @@ function renderBFBossList() {
         <div class="bf-boss-desc">${bfBossDesc(key)}</div>
       </div>
       <span class="bf-boss-check" style="color:${def.color}">✓</span>`;
-    card.onclick = () => { bfSelectedBoss = key; renderBFBossList(); updateBFStartBtn(); };
+    card.onclick = () => { bfSelectedBoss = key; renderBFBossList(); renderBFStageList(); updateBFStartBtn(); };
     container.appendChild(card);
   });
 }
 
 function bfBossDesc(key) {
   const descs = {
-    titan:   'Charge en ligne droite. Lent mais dévastateur.',
-    spectre: 'Invisible, se téléporte. Spirales de projectiles.',
-    swarm:   '3 fragments orbitants qui se resserrent.',
+    titan:      'Charge en ligne droite. Lent mais dévastateur.',
+    spectre:    'Invisible, se téléporte. Spirales de projectiles.',
+    swarm:      '3 fragments orbitants qui se resserrent.',
+    araignee:   'Pose des toiles ralentissantes. Bondit vers vous.',
+    conducteur: 'Pylônes reliés par des arcs électriques dangereux.',
+    leviathan:  'Ondes de choc radiales. Se divise à 50% PV.',
+    berserk:    'Entre en rage selon les dégâts reçus. Tirs en spirale.',
+    eclipse:    "Plonge l'arène dans le noir. Tirs aveugles.",
+    necromant:  '⚠ VAGUE 50 · Invoque des morts-vivants sans fin.',
+    mime:       '⚠ VAGUE 100 · Se déplace en miroir. Copie vos tirs.',
   };
   return descs[key] || '';
+}
+
+// Stage definitions: wave number -> HP multiplier
+const BF_STAGES = [10,20,30,40,50,60,70,80,90,100];
+const STAGE_TIER_COLORS = ['#aaffaa','#ccff44','#ffdd44','#ffaa00','#ff6600','#ff2200','#cc44ff','#8800ff','#ffffff','#ffd700'];
+const STAGE_TIER_LABELS = ['FACILE','NORMAL','INTERMÉDIAIRE','DIFFICILE','DUR','TRÈS DUR','BRUTAL','CAUCHEMAR','INFERNAL','LÉGENDAIRE'];
+
+function getBossHpForStage(stage, def) {
+  const waveTier = Math.floor(stage / 10);
+  const hpMult = stage / 10; // 10=×1, 100=×10
+  return Math.round(def.hpBase * (1 + waveTier * 0.5) * hpMult + stage * 5);
+}
+
+function renderBFStageList() {
+  const container = document.getElementById('bossfight-stage-list');
+  container.innerHTML = '';
+  BF_STAGES.forEach((stage, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'bf-stage-btn' + (bfSelectedStage === stage ? ' selected' : '');
+    btn.dataset.tier = i + 1;
+    const tier = i + 1;
+    const color = STAGE_TIER_COLORS[i];
+    btn.style.color = color;
+    // Estimate HP if boss selected
+    const hpText = bfSelectedBoss
+      ? `${getBossHpForStage(stage, BOSS_DEFS[bfSelectedBoss]).toLocaleString()} PV`
+      : `×${tier * 100}% PV`;
+    btn.innerHTML = `
+      <span class="bf-stage-num">ÉTAGE ${stage}</span>
+      <span class="bf-stage-hp">${hpText}</span>`;
+    btn.onclick = () => {
+      bfSelectedStage = stage;
+      renderBFStageList();
+      updateBFStagePreview();
+      updateBFStartBtn();
+    };
+    container.appendChild(btn);
+  });
+  updateBFStagePreview();
+}
+
+function updateBFStagePreview() {
+  const el = document.getElementById('bf-stage-preview');
+  const idx = BF_STAGES.indexOf(bfSelectedStage);
+  if (idx === -1) { el.innerHTML = '—'; return; }
+  const color = STAGE_TIER_COLORS[idx];
+  const label = STAGE_TIER_LABELS[idx];
+  const hpText = bfSelectedBoss
+    ? getBossHpForStage(bfSelectedStage, BOSS_DEFS[bfSelectedBoss]).toLocaleString() + ' PV'
+    : `×${bfSelectedStage/10*100}% PV de base`;
+  el.innerHTML = `<strong style="color:${color}">ÉTAGE ${bfSelectedStage}</strong>${label}<br><span style="color:${color};opacity:0.8">${hpText}</span>`;
 }
 
 function renderBFBuffGrid() {
@@ -3045,7 +3226,14 @@ function updateBFCounter() {
 
 function updateBFStartBtn() {
   const btn = document.getElementById('bf-start');
-  btn.disabled = !bfSelectedBoss;
+  btn.disabled = !bfSelectedBoss || !bfSelectedStage;
+  if (bfSelectedBoss && bfSelectedStage) {
+    const def = BOSS_DEFS[bfSelectedBoss];
+    const hp = getBossHpForStage(bfSelectedStage, def);
+    btn.textContent = `▶ LANCER — ${def.name} ÉT.${bfSelectedStage} (${hp.toLocaleString()} PV)`;
+  } else {
+    btn.textContent = '▶ LANCER';
+  }
 }
 
 function startBossFight() {
@@ -3053,7 +3241,9 @@ function startBossFight() {
   BOSSFIGHT_MODE = true;
 
   document.getElementById('bossfight-screen').classList.add('hidden');
-  document.getElementById('bossfight-badge').classList.remove('hidden');
+  const stageBadge = document.getElementById('bossfight-badge');
+  stageBadge.textContent = `💀 BOSS FIGHT · ÉTAGE ${bfSelectedStage}`;
+  stageBadge.classList.remove('hidden');
 
   // Init clean game state
   state.player = { x: W/2, y: H/2, r: 12, hp: 100, maxHp: 100, iframes: 0 };
@@ -3077,7 +3267,7 @@ function startBossFight() {
   boss = null; allies = []; familiars = [];
   RESURRECTION = false; WEB_TRAIL=false; FRACTURE=false;
   SURCHAUFFE=false; surchauffeLevel=0; surchauffeTimer=0;
-  DARK_VISION=false; CLONE_ACTIVE=false; CLONE_TIMER=0;
+  DARK_VISION=false; SHADOW_DODGE=false; CLONE_ACTIVE=false; CLONE_TIMER=0;
   SHIELD_STACKS=0; BIGGER_BULLETS_BONUS=4;
   EXPLOSION_LEVEL=0; CHAIN_LEVEL=0;
   LIFE_STEALER=false; lifeStealerTimer=0;
@@ -3095,7 +3285,8 @@ function startBossFight() {
     for (let i = 0; i < count; i++) recordBuff(buff);
   });
 
-  // Spawn chosen boss immediately
+  // Spawn chosen boss at selected stage
+  state.wave = bfSelectedStage; // so startBossWave computes correct tier
   startBossWave(bfSelectedBoss);
 
   if (loopId) cancelAnimationFrame(loopId);
