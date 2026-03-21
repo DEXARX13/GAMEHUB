@@ -83,32 +83,42 @@
 
   #health-bar-wrapper {
     position: absolute;
-    bottom: 12px;
+    bottom: 10px;
     left: 16px;
     right: 16px;
     pointer-events: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
   }
 
-  .bar-label {
-    font-size: 9px;
-    letter-spacing: 3px;
-    color: rgba(255,34,68,0.7);
-    margin-bottom: 4px;
+  #hp-text {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: 1px;
+    color: rgba(255,80,80,0.9);
+    white-space: nowrap;
+    min-width: 72px;
+    text-align: right;
+    flex-shrink: 0;
   }
 
   #health-bar-bg {
-    height: 8px;
-    background: rgba(255,34,68,0.1);
-    border: 1px solid rgba(255,34,68,0.3);
+    flex: 1;
+    height: 6px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 3px;
     position: relative;
     overflow: hidden;
   }
 
   #health-bar-fill {
     height: 100%;
-    background: var(--neon-red);
-    box-shadow: 0 0 10px var(--neon-red);
-    transition: width 0.15s;
+    background: linear-gradient(90deg, #cc0022, #ff2244);
+    box-shadow: 0 0 8px rgba(255,34,68,0.6);
+    border-radius: 3px;
+    transition: width 0.12s ease-out, background 0.3s;
   }
 
   /* Overlay screens */
@@ -1177,10 +1187,7 @@
   </div>
 
   <div id="health-bar-wrapper">
-    <div class="bar-label" style="display:flex;justify-content:space-between;align-items:center">
-      <span>VIE ─── POINTS DE RÉSISTANCE</span>
-      <span id="hp-text" style="font-size:9px;color:rgba(255,80,80,0.9);letter-spacing:1px">100 / 100</span>
-    </div>
+    <span id="hp-text">100 / 100</span>
     <div id="health-bar-bg">
       <div id="health-bar-fill" style="width:100%"></div>
     </div>
@@ -1995,12 +2002,18 @@ function update() {
   const enemyCount = state.enemies.length + state.enemiesToSpawn + (boss ? 1 : 0);
   document.getElementById('hud-enemies').textContent = enemyCount;
   const hpPct = Math.max(0, p.hp / p.maxHp * 100);
-  document.getElementById('health-bar-fill').style.width = hpPct + '%';
+  const fillEl = document.getElementById('health-bar-fill');
+  fillEl.style.width = hpPct + '%';
+  // Color: green > 60%, orange 30-60%, red < 30%
+  if (hpPct > 60)      fillEl.style.background = 'linear-gradient(90deg,#009944,#00cc55)';
+  else if (hpPct > 30) fillEl.style.background = 'linear-gradient(90deg,#bb5500,#ff8800)';
+  else                 fillEl.style.background = 'linear-gradient(90deg,#cc0022,#ff2244)';
+  fillEl.style.boxShadow = hpPct > 60 ? '0 0 8px rgba(0,204,85,0.6)' : hpPct > 30 ? '0 0 8px rgba(255,136,0,0.6)' : '0 0 8px rgba(255,34,68,0.7)';
   const hpTextEl = document.getElementById('hp-text');
   if (hpTextEl) {
     const curHp = Math.max(0, Math.round(p.hp));
     hpTextEl.textContent = curHp + ' / ' + p.maxHp;
-    hpTextEl.style.color = hpPct <= 25 ? '#ff2244' : hpPct <= 50 ? '#ff8800' : 'rgba(255,80,80,0.9)';
+    hpTextEl.style.color = hpPct > 60 ? 'rgba(0,204,85,0.9)' : hpPct > 30 ? 'rgba(255,136,0,0.9)' : '#ff2244';
   }
 }
 
