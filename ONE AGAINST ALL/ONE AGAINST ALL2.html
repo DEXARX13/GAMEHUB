@@ -1352,6 +1352,13 @@ let state = {
 
 // ─── GLOBAL FLAGS (declared early to avoid temporal dead zone) ──
 let BOSSFIGHT_MODE = false;
+// Orbs
+let ORB_COUNT = 0, ORB_DAMAGE_MULT = 1.0, ORB_SPEED_MULT = 1.0, ORB_SIZE_MULT = 1.0;
+// Gameplay flags
+let VAMPIRISM = false, VAMPIRISM_STACKS = 0;
+let SHIELD_ACTIVE = false, SHIELD_STACKS = 0, PASSIVE_REGEN = false;
+let RESURRECTION = false, WEB_TRAIL = false, FRACTURE = false;
+let DARK_VISION = false, SHADOW_DODGE = false;
 let boss = null;
 let bossDropActive = false;
 let allies = [], familiars = [];
@@ -1923,6 +1930,7 @@ function update() {
     p.hp = 30; p.iframes = 120;
     for(let i=0;i<20;i++) particles(p.x,p.y,'#ffdd88',1);
     state.resurrectionFlash = 30;
+    return; // skip death check this frame
   }
 
   // Death
@@ -1950,6 +1958,9 @@ function update() {
       startBossWave();
     } else {
       state.wave = nextWave;
+      // 15% heal between waves
+      const healAmt = Math.round(state.player.maxHp * 0.15);
+      state.player.hp = Math.min(state.player.maxHp, state.player.hp + healAmt);
       state.phase = 'buffing';
       showBuffs();
     }
@@ -2477,22 +2488,15 @@ const BOSS_DEFS = {
 };
 
 // boss, bossDropActive declared early
-let ARMOR = false, HOMING = false, MINION_SPAWN = false;
-let RESURRECTION = false;
-let WEB_TRAIL = false;
-let FRACTURE = false;
-let SURCHAUFFE = false, surchauffeTimer = 0, surchauffeLevel = 0;
-let DARK_VISION = false;
-let SHADOW_DODGE = false;
-let CLONE_ACTIVE = false, CLONE_TIMER = 0;
-let VAMPIRISM_STACKS = 0;
-let ORB_DAMAGE_MULT = 1.0, ORB_SPEED_MULT = 1.0, ORB_SIZE_MULT = 1.0;
-let SHIELD_STACKS = 0, BIGGER_BULLETS_BONUS = 4;
-let EXPLOSION_LEVEL = 0, CHAIN_LEVEL = 0;
-let LIFE_STEALER = false, lifeStealerTimer = 0;
-let SURGE_UNLOCKED = false, SURGE_CHARGE = 0, SURGE_MAX = 20;
-let TELEPORT_UNLOCKED = false, TELEPORT_CD = 0, TELEPORT_CD_MAX = 240;
-let FAMILIAR_UNLOCKED = false, FAMILIAR_CD = 0, FAMILIAR_CD_MAX = 300;
+// let ARMOR = false, HOMING = false, MINION_SPAWN = false; (declared early)
+// let SURCHAUFFE = false, surchauffeTimer = 0, surchauffeLevel = 0; (declared early)
+// let CLONE_ACTIVE = false, CLONE_TIMER = 0; (declared early)
+// SHIELD_STACKS declared early
+// let EXPLOSION_LEVEL = 0, CHAIN_LEVEL = 0; (declared early)
+// let LIFE_STEALER = false, lifeStealerTimer = 0; (declared early)
+// let SURGE_UNLOCKED = false, SURGE_CHARGE = 0, SURGE_MAX = 20; (declared early)
+// let TELEPORT_UNLOCKED = false, TELEPORT_CD = 0, TELEPORT_CD_MAX = 240; (declared early)
+// let FAMILIAR_UNLOCKED = false, FAMILIAR_CD = 0, FAMILIAR_CD_MAX = 300; (declared early)
 // familiars declared early
 // allies declared early
 
@@ -2813,14 +2817,24 @@ const BUFF_POOL = [
   { id:'bullettime',rarity:'rare',      maxStacks:1,  icon:'⏱️', name:'BULLET TIME',     desc:(n)=>'Ennemis ralentissent sous 25% PV',                  apply: () => { BULLET_TIME=true; } },
   { id:'vampire',   rarity:'rare',      maxStacks:3,  icon:'🩸', name:'VAMPIRISME',      desc:(n)=>`Kill → +${n} PV (max 3 stacks)`,                   apply: () => { if(VAMPIRISM_STACKS<3){ VAMPIRISM=true; VAMPIRISM_STACKS++; } } },
   { id:'familiar',  rarity:'rare',      maxStacks:1,  icon:'🐾', name:'FAMILIER',        desc:(n)=>'Touche A : invoque un familier (max 3, CD 5s)',     apply: () => { FAMILIAR_UNLOCKED=true; } },
+  // ── INFINIS (communs, faibles, stackables sans limite) ──────────────
+  { id:'precision',  rarity:'common',    maxStacks:null, icon:'🎯', name:'PRÉCISION',     desc:(n)=>`Dégâts +2% (stack ${n})`,                           apply: () => { state.buffs.damage += 0.02; } },
+  { id:'endurance',  rarity:'common',    maxStacks:null, icon:'🫀', name:'ENDURANCE',     desc:(n)=>`+5 PV max (stack ${n})`,                             apply: () => { state.buffs.maxHp+=5; state.player.maxHp+=5; state.player.hp=Math.min(state.player.hp+5,state.player.maxHp); } },
+  { id:'reflexes',   rarity:'common',    maxStacks:null, icon:'⚙️', name:'RÉFLEXES',      desc:(n)=>`Cadence +1% (stack ${n})`,                           apply: () => { FIRE_RATE_BONUS += 0.01; } },
+  { id:'toucher',    rarity:'common',    maxStacks:null, icon:'🔵', name:'TOUCHER',       desc:(n)=>`Hitbox balle +5% (stack ${n})`,                      apply: () => { BIGGER_BULLETS=true; BIGGER_BULLETS_BONUS=Math.max(4,(BIGGER_BULLETS_BONUS||4))+0.4; } },
   // ── LÉGENDAIRE ──────────────────────────────────────────────────────
   { id:'lifestealer',rarity:'legendary',maxStacks:1,  icon:'💜', name:'LIFE STEALER',   desc:(n)=>'Zone : +1 PV/ennemi proche toutes les 2s',          apply: () => { LIFE_STEALER=true; } },
+  // ── INFINIS (commun, sans limite de stacks) ────────────────────
+  { id:'precision',  rarity:'common',    maxStacks:null, icon:'🎯', name:'PRÉCISION',      desc:(n)=>`+${Math.max(1,Math.round(4-n*0.1)).toFixed(0)}% dégâts (infini)`,    apply: () => { state.buffs.damage += 0.04; } },
+  { id:'endurance',  rarity:'common',    maxStacks:null, icon:'💪', name:'ENDURANCE',      desc:(n)=>'+5 PV max (infini)',                                                   apply: () => { state.player.maxHp+=5; state.buffs.maxHp+=5; state.player.hp=Math.min(state.player.hp+2,state.player.maxHp); } },
+  { id:'reflexes',   rarity:'common',    maxStacks:null, icon:'⚡', name:'RÉFLEXES',       desc:(n)=>'-2% temps entre tirs (infini)',                                        apply: () => { FIRE_RATE_BONUS += 0.02; } },
+  { id:'toucher',    rarity:'common',    maxStacks:null, icon:'🔵', name:'TOUCHER',         desc:(n)=>'+5% rayon des balles (infini)',                                        apply: () => { BIGGER_BULLETS=true; BIGGER_BULLETS_BONUS=(BIGGER_BULLETS_BONUS||4)+0.5; } },
   { id:'homing',    rarity:'legendary', maxStacks:1,  icon:'🔮', name:'ŒIL DU CHASSEUR',desc:(n)=>'Projectiles guidés légèrement',                     apply: () => { HOMING=true; } },
   { id:'minion',    rarity:'legendary', maxStacks:1,  icon:'🐝', name:'ÉCLAT DE NUÉE',  desc:(n)=>'20% chance de spawner un allié au kill',            apply: () => { MINION_SPAWN=true; } },
 ];
 
-let FIRE_RATE_BONUS = 0, BULLET_SPEED_BONUS = 0, SCORE_MULT = 1, I_FRAME_BONUS = 0, FREEZE_CHANCE = 0;
-let PIERCING = false, TRIPLE_SHOT = 0, BIGGER_BULLETS = false, BACK_SHOT = false;
+// let FIRE_RATE_BONUS = 0, BULLET_SPEED_BONUS = 0, SCORE_MULT = 1, I_FRAME_BONUS = 0, FREEZE_CHANCE = 0; (declared early)
+// let PIERCING = false, TRIPLE_SHOT = 0, BIGGER_BULLETS = false, BACK_SHOT = false; (declared early)
 // (vars declared above via boss system block)
 
 let rerollsLeft = 3;
@@ -2834,6 +2848,10 @@ function rerollBuffs() {
 function showBuffs() {
   rerollsLeft = 3;
   renderBuffCards();
+  // Show heal amount in buff screen subtitle
+  const healAmt = Math.round(state.player.maxHp * 0.15);
+  const healEl = document.getElementById('buff-screen-heal');
+  if (healEl) healEl.textContent = `❤️ +${healAmt} PV récupérés entre les vagues`;
   document.getElementById('buff-screen').classList.remove('hidden');
 }
 
@@ -2845,7 +2863,7 @@ function getBuffCount(id) {
 
 // ── Helper: is buff at max stacks?
 function isBuffMaxed(b) {
-  if (!b.maxStacks) return false;
+  if (!b.maxStacks || b.maxStacks === null) return false; // null = unlimited
   return getBuffCount(b.id) >= b.maxStacks;
 }
 
@@ -2901,7 +2919,7 @@ function renderBuffCards() {
     const stackBadge = stacks > 0
       ? `<span style="position:absolute;top:5px;right:6px;font-family:Orbitron,sans-serif;font-size:9px;font-weight:900;color:var(--neon-cyan)">×${stacks+1}</span>`
       : '';
-    const maxInfo = b.maxStacks ? ` <span style="font-size:8px;opacity:0.35">(max ${b.maxStacks})</span>` : '';
+    const maxInfo = b.maxStacks ? ` <span style="font-size:8px;opacity:0.35">(max ${b.maxStacks})</span>` : (b.maxStacks === null ? ` <span style="font-size:9px;opacity:0.35">∞</span>` : '');
     card.innerHTML = `${stackBadge}<span class="buff-icon">${b.icon}</span><div class="buff-name">${b.name}${rarityLabel[b.rarity]||''}${maxInfo}</div><div class="buff-desc">${getBuffDesc(b)}</div>`;
     card.onclick = () => {
       b.apply();
@@ -3495,7 +3513,14 @@ function startBossFight() {
   if (!bfSelectedBoss) return;
   BOSSFIGHT_MODE = true;
 
+  // Hide ALL overlays cleanly
   document.getElementById('bossfight-screen').classList.add('hidden');
+  document.getElementById('gameover-screen').classList.add('hidden');
+  document.getElementById('start-screen').classList.add('hidden');
+  document.getElementById('pause-screen').classList.add('hidden');
+  document.getElementById('buff-screen').classList.add('hidden');
+  document.getElementById('name-input-screen').classList.add('hidden');
+  document.getElementById('boss-drop-screen') && document.getElementById('boss-drop-screen').classList.add('hidden');
   const stageBadge = document.getElementById('bossfight-badge');
   stageBadge.textContent = `💀 BOSS FIGHT · ÉTAGE ${bfSelectedStage}`;
   stageBadge.classList.remove('hidden');
