@@ -1177,7 +1177,10 @@
   </div>
 
   <div id="health-bar-wrapper">
-    <div class="bar-label">VIE ─── POINTS DE RÉSISTANCE</div>
+    <div class="bar-label" style="display:flex;justify-content:space-between;align-items:center">
+      <span>VIE ─── POINTS DE RÉSISTANCE</span>
+      <span id="hp-text" style="font-size:9px;color:rgba(255,80,80,0.9);letter-spacing:1px">100 / 100</span>
+    </div>
     <div id="health-bar-bg">
       <div id="health-bar-fill" style="width:100%"></div>
     </div>
@@ -1923,6 +1926,11 @@ function update() {
   // Update boss
   if (boss) updateBoss();
 
+  // Tick CDs
+  if (TELEPORT_CD > 0) TELEPORT_CD--;
+  if (FAMILIAR_CD > 0) FAMILIAR_CD--;
+
+
   // Update allies
   if (allies.length > 0) updateAllies();
 
@@ -1988,6 +1996,12 @@ function update() {
   document.getElementById('hud-enemies').textContent = enemyCount;
   const hpPct = Math.max(0, p.hp / p.maxHp * 100);
   document.getElementById('health-bar-fill').style.width = hpPct + '%';
+  const hpTextEl = document.getElementById('hp-text');
+  if (hpTextEl) {
+    const curHp = Math.max(0, Math.round(p.hp));
+    hpTextEl.textContent = curHp + ' / ' + p.maxHp;
+    hpTextEl.style.color = hpPct <= 25 ? '#ff2244' : hpPct <= 50 ? '#ff8800' : 'rgba(255,80,80,0.9)';
+  }
 }
 
 // ─── BOSS SYSTEM ───────────────────────────────────────────────
@@ -2818,7 +2832,6 @@ const BUFF_POOL = [
   { id:'scoremult', rarity:'common',    maxStacks:5,  icon:'✨', name:'MULTIPLICATEUR',  desc:(n)=>`Score ×${(1+n*0.5).toFixed(1)}`,                   apply: () => { SCORE_MULT += 0.5; } },
   { id:'pasregen',  rarity:'common',    maxStacks:1,  icon:'🩺', name:'REGEN PASSIVE',   desc:(n)=>'+1 PV/3s automatiquement',                         apply: () => { PASSIVE_REGEN=true; } },
   { id:'shrink',    rarity:'common',    maxStacks:2,  icon:'🔵', name:'SILHOUETTE',       desc:(n)=>`Hitbox -${n*25}%`,                                  apply: () => { state.player.r=Math.max(5,state.player.r*0.75); } },
-  { id:'teleport',  rarity:'common',    maxStacks:1,  icon:'📍', name:'TÉLÉPORT',        desc:(n)=>'Touche E : TP à la souris (CD 4s)',                 apply: () => { TELEPORT_UNLOCKED=true; } },
   { id:'orb1',      rarity:'common',    maxStacks:6,  icon:'🌀', name:'ORBE',             desc:(n)=>`+1 orbe tournant (total ${n}, max 6)`,              apply: () => { ORB_COUNT=Math.min(6,ORB_COUNT+1); } },
   // ── RARE ────────────────────────────────────────────────────────────
   { id:'piercing',  rarity:'rare',      maxStacks:1,  icon:'🎯', name:'PERFORATION',     desc:(n)=>'Balles traversent tous les ennemis',               apply: () => { PIERCING=true; } },
@@ -2830,9 +2843,8 @@ const BUFF_POOL = [
   { id:'orbspd',    rarity:'rare',      maxStacks:3,  icon:'🌀', name:'ORBE+ VITESSE',  desc:(n)=>`Orbes +${n*50}% vitesse`,                           apply: () => { if(ORB_SPEED_MULT<2.5) ORB_SPEED_MULT+=0.5; } },
   { id:'orbsize',   rarity:'rare',      maxStacks:2,  icon:'🔮', name:'ORBE+ TAILLE',   desc:(n)=>`Orbes +${n*50}% taille`,                            apply: () => { if(ORB_SIZE_MULT<2.0) ORB_SIZE_MULT+=0.5; } },
   { id:'shockwave', rarity:'rare',      maxStacks:1,  icon:'🌊', name:'ONDE DE CHOC',    desc:(n)=>'Onde toutes les 10s repousse les proches',          apply: () => { SHOCKWAVE=true; } },
-  { id:'bullettime',rarity:'rare',      maxStacks:1,  icon:'⏱️', name:'BULLET TIME',     desc:(n)=>'Ennemis ralentissent sous 25% PV',                  apply: () => { BULLET_TIME=true; } },
-  { id:'vampire',   rarity:'rare',      maxStacks:3,  icon:'🩸', name:'VAMPIRISME',      desc:(n)=>`Kill → +${n} PV (max 3 stacks)`,                   apply: () => { if(VAMPIRISM_STACKS<3){ VAMPIRISM=true; VAMPIRISM_STACKS++; } } },
-  { id:'familiar',  rarity:'rare',      maxStacks:1,  icon:'🐾', name:'FAMILIER',        desc:(n)=>'Touche A : invoque un familier (max 3, CD 5s)',     apply: () => { FAMILIAR_UNLOCKED=true; } },
+  { id:'bullettime',rarity:'legendary', maxStacks:1,  icon:'⏱️', name:'BULLET TIME',     desc:(n)=>'Ennemis ralentissent sous 25% PV',                  apply: () => { BULLET_TIME=true; } },
+  { id:'vampire',   rarity:'legendary', maxStacks:3,  icon:'🩸', name:'VAMPIRISME',      desc:(n)=>`Kill → +${n} PV (max 3 stacks)`,                   apply: () => { if(VAMPIRISM_STACKS<3){ VAMPIRISM=true; VAMPIRISM_STACKS++; } } },
   // ── INFINIS (communs, faibles, stackables sans limite) ──────────────
   { id:'precision',  rarity:'common',    maxStacks:null, icon:'🎯', name:'PRÉCISION',     desc:(n)=>`Dégâts +2% (stack ${n})`,                           apply: () => { state.buffs.damage += 0.02; } },
   { id:'endurance',  rarity:'common',    maxStacks:null, icon:'🫀', name:'ENDURANCE',     desc:(n)=>`+5 PV max (stack ${n})`,                             apply: () => { state.buffs.maxHp+=5; state.player.maxHp+=5; state.player.hp=Math.min(state.player.hp+5,state.player.maxHp); } },
@@ -2845,8 +2857,6 @@ const BUFF_POOL = [
   { id:'endurance',  rarity:'common',    maxStacks:null, icon:'💪', name:'ENDURANCE',      desc:(n)=>'+5 PV max (infini)',                                                   apply: () => { state.player.maxHp+=5; state.buffs.maxHp+=5; state.player.hp=Math.min(state.player.hp+2,state.player.maxHp); } },
   { id:'reflexes',   rarity:'common',    maxStacks:null, icon:'⚡', name:'RÉFLEXES',       desc:(n)=>'-2% temps entre tirs (infini)',                                        apply: () => { FIRE_RATE_BONUS += 0.02; } },
   { id:'toucher',    rarity:'common',    maxStacks:null, icon:'🔵', name:'TOUCHER',         desc:(n)=>'+5% rayon des balles (infini)',                                        apply: () => { BIGGER_BULLETS=true; BIGGER_BULLETS_BONUS=(BIGGER_BULLETS_BONUS||4)+0.5; } },
-  { id:'homing',    rarity:'legendary', maxStacks:1,  icon:'🔮', name:'ŒIL DU CHASSEUR',desc:(n)=>'Projectiles guidés légèrement',                     apply: () => { HOMING=true; } },
-  { id:'minion',    rarity:'legendary', maxStacks:1,  icon:'🐝', name:'ÉCLAT DE NUÉE',  desc:(n)=>'20% chance de spawner un allié au kill',            apply: () => { MINION_SPAWN=true; } },
 ];
 
 // let FIRE_RATE_BONUS = 0, BULLET_SPEED_BONUS = 0, SCORE_MULT = 1, I_FRAME_BONUS = 0, FREEZE_CHANCE = 0; (declared early)
@@ -3304,6 +3314,62 @@ function draw() {
     ctx.fillStyle='rgba(0,255,221,0.3)';
     ctx.beginPath(); ctx.arc(ghostX,ghostY,4,0,Math.PI*2); ctx.fill();
     ctx.globalAlpha=1;
+  }
+
+  // ── Ability Status HUD ────────────────────────────────
+  {
+    const lines = [];
+
+    if (TELEPORT_UNLOCKED) {
+      const ready = TELEPORT_CD <= 0;
+      lines.push({ text: ready ? '📍 TÉLÉPORT (E)  PRÊT' : `📍 TÉLÉPORT (E)  ${(TELEPORT_CD/60).toFixed(1)}s`, color: ready ? 'rgba(204,68,255,0.95)' : 'rgba(204,68,255,0.35)' });
+    }
+    if (FAMILIAR_UNLOCKED) {
+      const ready = FAMILIAR_CD <= 0 && familiars.length < 3;
+      const full  = familiars.length >= 3;
+      lines.push({ text: full ? `🐾 FAMILIER (A)  MAX [3/3]` : ready ? `🐾 FAMILIER (A)  PRÊT [${familiars.length}/3]` : `🐾 FAMILIER (A)  ${(FAMILIAR_CD/60).toFixed(1)}s [${familiars.length}/3]`, color: ready ? 'rgba(255,170,0,0.95)' : 'rgba(255,170,0,0.35)' });
+    }
+    if (CLONE_ACTIVE && CLONE_TIMER > 0) {
+      lines.push({ text: `🪞 CLONE  ${(CLONE_TIMER/60).toFixed(1)}s`, color: 'rgba(200,200,200,0.9)' });
+    }
+    if (SHOCKWAVE) {
+      const swLeft = Math.max(0, 600 - (state.shockwaveTimer || 0));
+      lines.push({ text: swLeft <= 0 ? '🌊 ONDE DE CHOC  PRÊT' : `🌊 ONDE DE CHOC  ${(swLeft/60).toFixed(1)}s`, color: swLeft <= 0 ? 'rgba(0,255,221,0.95)' : 'rgba(0,255,221,0.35)' });
+    }
+    if (SURCHAUFFE) {
+      const mult = Math.min(3, 1 + surchauffeLevel * 0.1);
+      lines.push({ text: `🔥 SURCHAUFFE  ×${mult.toFixed(1)}`, color: mult >= 3 ? 'rgba(255,68,0,0.95)' : mult >= 2 ? 'rgba(255,136,0,0.9)' : 'rgba(255,200,0,0.7)' });
+    }
+    if (SURGE_UNLOCKED) {
+      const pct = Math.round((SURGE_CHARGE / SURGE_MAX) * 100);
+      const ready = SURGE_CHARGE >= SURGE_MAX;
+      lines.push({ text: ready ? '⚡ DÉCHARGE  PRÊTE' : `⚡ DÉCHARGE  ${pct}%`, color: ready ? 'rgba(255,238,0,0.95)' : 'rgba(255,238,0,0.4)' });
+    }
+    if (SHIELD_ACTIVE && SHIELD_STACKS > 0) {
+      lines.push({ text: `🛡️ BOUCLIER  ${'◆'.repeat(SHIELD_STACKS)}${'◇'.repeat(Math.max(0,3-SHIELD_STACKS))}`, color: 'rgba(150,210,255,0.9)' });
+    }
+    if (RESURRECTION) {
+      lines.push({ text: '💚 RÉSURRECTION  ACTIVE', color: 'rgba(68,255,136,0.9)' });
+    }
+    if (LIFE_STEALER) {
+      const lsLeft = Math.max(0, 120 - (lifeStealerTimer || 0));
+      lines.push({ text: lsLeft <= 0 ? '💜 LIFE STEALER  DRAIN' : `💜 LIFE STEALER  ${(lsLeft/60).toFixed(1)}s`, color: lsLeft <= 0 ? 'rgba(170,68,255,0.95)' : 'rgba(170,68,255,0.45)' });
+    }
+    if (SHADOW_DODGE) {
+      lines.push({ text: '🌒 OMBRE  25% esquive', color: 'rgba(153,0,204,0.7)' });
+    }
+
+    if (lines.length > 0) {
+      ctx.font = '700 8px Orbitron, monospace';
+      ctx.textAlign = 'right';
+      let cdY = H - 38;
+      for (let i = lines.length - 1; i >= 0; i--) {
+        ctx.fillStyle = lines[i].color;
+        ctx.fillText(lines[i].text, W - 10, cdY);
+        cdY -= 15;
+      }
+      ctx.textAlign = 'left';
+    }
   }
 }
 
